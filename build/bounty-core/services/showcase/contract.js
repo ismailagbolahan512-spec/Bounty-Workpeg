@@ -61,7 +61,8 @@ function toShowcaseTask(row) {
             : Number(row.reward_amount),
         deadline: toIso(row.deadline),
         status: row.status,
-        summary: makeSummary(row.description),
+        // Only the business-written public_summary. Never description (decision 4, 2026-11-12).
+        summary: row.public_summary ? makeSummary(row.public_summary) : '',
         updated_at: toIso(row.updated_at),
     };
 }

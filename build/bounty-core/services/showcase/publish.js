@@ -11,7 +11,7 @@
 
 const { toShowcaseTask, validateShowcaseTask } = require('./contract');
 
-const STATE = Object.freeze({ PUBLISHED: 'published', STALE: 'stale' });
+const STATE = Object.freeze({ PUBLISHED: 'published', STALE: 'stale', OFF: 'off' });
 
 // client: { upsertTask(task) => Promise } or null.
 // now: injectable clock for tests.
@@ -47,7 +47,21 @@ function createShowcasePublisher({ client = null, now = () => new Date() } = {})
         }
     }
 
-    return { publishBounty };
+    // Removes a bounty's mirror row. Used when the business turns the showcase off.
+    async function withdrawBounty(pgId) {
+        if (client === null || typeof client.deleteTask !== 'function') {
+            return { state: STATE.STALE, reason: 'not_configured', problems: [] };
+        }
+        try {
+            await client.deleteTask(pgId);
+            return { state: STATE.OFF, problems: [] };
+        } catch (err) {
+            const message = typeof err?.message === 'string' ? err.message.slice(0, 200) : 'unknown error';
+            return { state: STATE.STALE, reason: 'withdraw_failed', problems: [message] };
+        }
+    }
+
+    return { publishBounty, withdrawBounty };
 }
 
 module.exports = { STATE, createShowcasePublisher };

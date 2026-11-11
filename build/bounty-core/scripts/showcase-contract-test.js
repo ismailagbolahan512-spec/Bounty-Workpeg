@@ -12,6 +12,7 @@ function row(overrides = {}) {
         business_id: '11111111-1111-4111-8111-111111111111',
         title: 'Translate the onboarding guide',
         description: 'Translate  the guide into French.\n\nKeep headings.',
+        public_summary: 'Translate our onboarding guide into French.',
         category: 'Writing',
         difficulty: 'easy',
         reward_amount: '250.00',
@@ -33,6 +34,11 @@ test('the showcase copies only allowlisted fields', () => {
     for (const secret of ['business_id', 'winner_id', 'requirements', 'nda_text', 'rules_of_engagement', 'difficulty', 'submission_type']) {
         assert.equal(Object.prototype.hasOwnProperty.call(task, secret), false, `${secret} must not be copied`);
     }
+});
+
+test('summary comes only from public_summary, never description', () => {
+    assert.equal(toShowcaseTask(row()).summary, 'Translate our onboarding guide into French.');
+    assert.equal(toShowcaseTask(row({ public_summary: null, description: 'secret detail' })).summary, '');
 });
 
 test('reward is a number and deadline/updated_at are ISO strings', () => {
