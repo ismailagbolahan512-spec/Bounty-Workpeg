@@ -8,6 +8,8 @@
     var THEME_KEY = 'bounty_theme';
 
     var THEMES = {
+        gold: { label: 'Charcoal & Gold', description: 'Dark-first, warm and editorial', color: '#111315' },
+        parchment: { label: 'Off-white & Gold', description: 'Light and warm, with the same gold accent', color: '#F4F1EA' },
         indigo: { label: 'Indigo & White', description: 'Bright, clean and professional', color: '#3730A3' },
         navy: { label: 'Deep Navy & Violet', description: 'Night-mode depth with electric violet', color: '#8A3FFC' },
         emerald: { label: 'Emerald & Ivory', description: 'Warm, calm and growth-focused', color: '#047857' },
@@ -17,7 +19,7 @@
     var state = {
         user: readJSON(USER_KEY),
         token: '',
-        theme: 'indigo',
+        theme: 'gold',
         themeMenu: false,
         mobileMenu: false,
         bountyPage: 1,
@@ -348,8 +350,9 @@
     function normalizeTheme(value) {
         if (value === 'dark') return 'navy';
         if (value === 'coral') return 'charcoal';
-        if (value === 'light' || !value) return 'indigo';
-        return Object.prototype.hasOwnProperty.call(THEMES, value) ? value : 'indigo';
+        if (value === 'light') return 'indigo';
+        if (!value) return 'gold';
+        return Object.prototype.hasOwnProperty.call(THEMES, value) ? value : 'gold';
     }
 
     function bellHTML() {

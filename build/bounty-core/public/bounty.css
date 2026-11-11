@@ -2859,3 +2859,62 @@ fieldset.field legend { font-weight: 600; margin-bottom: 0.4rem; }
 .agreement-text { white-space: pre-wrap; font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; max-height: 45vh; overflow: auto; }
 .agreement-check { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0; }
 .agreement-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+
+/* ============ Bounty design system: dark-first "Charcoal & Gold" (default) and "Off-white & Gold" ============
+   Palette: charcoal #111315, coal #1B1F22, surface #292F33, gold #D6A24A, off-white #F4F1EA, muted #89949C.
+   Contrast (WCAG): text on bg 16.5:1, muted on bg 6.0:1, muted on surface 5.4:1, onAccent on gold 8.1:1. */
+
+:root[data-theme="gold"] {
+    color-scheme: dark;
+    --bg: #111315;
+    --surface: #1B1F22;
+    --surface2: #292F33;
+    --surface3: #343B40;
+    --text: #F4F1EA;
+    --muted: #89949C;
+    --line: #2F363B;
+    --accent: #D6A24A;
+    --accent2: #E8BD6B;
+    --accentText: #E8BD6B;
+    --onAccent: #111315;
+    --good: #6FCF97;
+    --goodBg: #17301F;
+    --warn: #F2C94C;
+    --warnBg: #332A10;
+    --bad: #F28B82;
+    --badBg: #3A1D1B;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    --shadowHover: 0 18px 46px rgba(0, 0, 0, 0.6);
+    --glow: rgba(214, 162, 74, 0.22);
+    --ctaA: #8A6424;
+    --ctaB: #D6A24A;
+    --ctaC: #E8BD6B;
+}
+
+:root[data-theme="parchment"] {
+    color-scheme: light;
+    --bg: #F4F1EA;
+    --surface: #FFFDF8;
+    --surface2: #EAE5D8;
+    --surface3: #DDD6C4;
+    --text: #1B1F22;
+    --muted: #5B6670;
+    --line: #DCD5C3;
+    --accent: #D6A24A;
+    --accent2: #B88632;
+    --accentText: #7A5410;
+    --onAccent: #1B1F22;
+    --good: #1E7A45;
+    --goodBg: #DDF3E4;
+    --warn: #7A5410;
+    --warnBg: #FBEFCF;
+    --bad: #B42318;
+    --badBg: #FDE3E0;
+    --shadow: 0 8px 30px rgba(27, 31, 34, 0.08);
+    --shadowHover: 0 18px 46px rgba(27, 31, 34, 0.14);
+    --glow: rgba(214, 162, 74, 0.25);
+    --ctaA: #7A5410;
+    --ctaB: #B88632;
+    --ctaC: #D6A24A;
+}
