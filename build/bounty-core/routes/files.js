@@ -86,6 +86,13 @@ router.post('/:id/files',
                 [fileId, id, req.user.id, key, name, contentType, body.length, digest]
             );
 
+            // PDF and Word files get text extracted by the Python worker (migration 020). Same transaction,
+            // so a job exists if and only if the file does.
+            const extractable = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            if (extractable.includes(contentType)) {
+                await client.query('INSERT INTO file_jobs (submission_file_id) VALUES ($1)', [fileId]);
+            }
+
             // A watermarked preview is made when the type supports one. If it cannot be made, the upload still succeeds.
             const preview = await previews.makePreview(body, contentType);
             if (preview) {
