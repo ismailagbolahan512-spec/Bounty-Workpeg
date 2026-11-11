@@ -6,7 +6,8 @@
     "scripts": {
         "dev": "node index.js",
         "start": "node index.js",
-        "test": "node scripts/run-tests.js"
+        "test": "node scripts/run-tests.js",
+        "test:showcase": "node --test scripts/showcase-contract-test.js"
     },
     "repository": {
         "type": "git",
