@@ -8,6 +8,11 @@ Decisions in force:
 2. PR #1 and the merge into `main` are under investigation (section 7). Nothing is reverted.
 3. The Python extraction worker is deferred. It stays in this architecture but is not built.
 4. PostgreSQL is Bounty's single source of truth for roles and permissions. Workpeg is never a role authority.
+5. The Python worker and the `file_jobs` table are deferred (section 11).
+6. No `stale` column is added without a separate schema approval (section 11).
+7. Workpeg tables and the pre-save hook wait until the open Workpeg questions (section 9) are answered.
+8. The public summary may come only from explicitly public text (`docs/mirror-contract.md`, section 3).
+9. Architecture work is not implementation approval. Schema changes and new components need explicit approval first.
 
 ## 1. Components and ownership
 
@@ -64,11 +69,14 @@ Not used, and why:
 
 ## 6. Failure handling and consistency
 
-- **PostgreSQL write succeeds, Workpeg publish fails.** The mirror row is marked `stale` in PostgreSQL. The next backend request that touches the bounty retries the publish. There is no timer, because Bounty has no scheduler.
+Full detail is in `docs/mirror-contract.md`, sections 5 to 7. Summary:
+
+- **PostgreSQL write succeeds, Workpeg publish fails.** The mirror is stale. The business request still succeeds. No stale column is added yet (decision 6), so staleness is found by reconciliation.
 - **Workpeg is down.** Bounty keeps working. Only the showcase is out of date.
-- **Pre-save hook refuses a row.** The mirror write fails and is recorded as `stale`. The PostgreSQL write is not rolled back, because the mirror is not authoritative.
+- **Pre-save hook refuses a row (once it exists).** Treated as a failed publish. The PostgreSQL write is not rolled back, because the mirror is not authoritative.
 - **Reconciliation.** An admin-triggered job rebuilds the mirror from PostgreSQL. It runs on demand, not on a schedule, since Workpeg has no scheduled execution.
 - **Ordering.** PostgreSQL is always written first. The mirror is derived, so a crash between the two steps leaves it stale, never wrong.
+- **Write points.** Every route that changes a mirrored field must publish after commit. The contract lists them, including lazy expiry, cancellation, winner selection and deadline extension.
 
 ## 7. PR #1 and the merge into `main` (investigation, no changes made)
 
@@ -102,10 +110,19 @@ Recommendation: confirm whether the merge was intended. If not, a revert commit 
 4. Timeouts, memory and payload limits for hooks.
 5. Confirm that mirror permissions alone (without roles) are the supported way to restrict a peg's visible rows.
 
-## 10. Next steps (after approval)
+## 10. Next steps (documentation only, until approvals arrive)
 
-1. Confirm the PR #1 merge with the owner.
-2. Confirm the mirror fields and the public-safe list with you.
-3. Write the mirror contract: field list, id mapping, `stale` states, and the publish call.
-4. Implement the mirror publish in the Bounty backend, with tests, on a branch of the Bounty backend repo. Do not touch its `main`.
-5. Build the two Workpeg tables and the single hook, and test each invariant.
+1. Confirm the PR #1 merge with the owner (section 7).
+2. Review `docs/mirror-contract.md` and approve or amend its field list, eligibility rule and write-point list.
+3. Get written answers to the open questions in section 9, and the Tables API endpoint and auth details.
+4. Approve or reject the schema changes proposed in the contract (`public_showcase`, `public_summary`). Each is a separate approval.
+5. Only after those: implement the publish helper, the Workpeg tables and the single hook, each with tests.
+
+## 11. Decision record
+
+- **2026-11-12.** Python extraction worker and `file_jobs` table: deferred. Not built, not scheduled.
+- **2026-11-12.** No `stale` column without separate schema approval. Staleness is handled by reconciliation for now.
+- **2026-11-12.** Workpeg tables and pre-save hook: wait for the open Workpeg questions.
+- **2026-11-12.** Public summary: only from explicitly public text. Preferred source is a business-written `public_summary`. Never automatically from `description`.
+- **2026-11-12.** PostgreSQL remains the single authority for roles, permissions, approvals and core marketplace data.
+- **Code status.** The build branch `build/bounty-core` holds a backend baseline copy, a contract and publisher module, and 11 unit tests. None of it is approved for merge. Nothing in it is wired into any route, and no schema has changed.
