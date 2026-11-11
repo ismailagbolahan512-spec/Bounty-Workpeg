@@ -1,0 +1,7 @@
+# Build output: regenerated from ui/ on every build, never edit by hand.
+ui/dist/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
