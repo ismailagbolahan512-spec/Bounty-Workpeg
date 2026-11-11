@@ -130,3 +130,28 @@ The Scaffold follows the device's light or dark setting by default. A charcoal p
 - **Phase 8. Visual pass and demo.** Full palette application, responsive checks, and the scripted business-to-worker-to-business demo.
 
 **Demo risk.** The end-to-end demo depends on Q9 (worker identity), Q6 (search), and Q3 and Q4 (AI). If any of these stays unanswered, the demo would need to use a documented workaround. That needs your decision before phase 2.
+
+## 7. Phase 0 findings (verified from the installed SDK, 0.158.0)
+
+Source read from the `workpeg==0.158.0` package installed in a scratch environment. Only documentation research was done. Nothing was added to the project.
+
+**Verified in source**
+
+- **Functions run only from table write hooks or manifest actions.** The SDK defines two hook phases, `pre_save_hook` and `post_save_hook`, which run on table writes. Manifest `actions` map to a table and phase. The UI has no direct call path: the compiler refuses `RunFunctionAction` in compiled apps ("there is no registry to look that name up in").
+- **Consequence for the architecture.** A Function cannot serve a UI read such as search or filtering. A UI action can only reach a Function by writing a row, and only a `pre_save_hook` can refuse that write. Post-save failures are logged after the row is saved, so they cannot stop it.
+- **Sandbox limits are not Function limits.** The `workpeg.sandbox` module defines exec timeouts (default 20 s, range 1–120 s), memory (64–4096 MB), output (64 KB), and args (8 KB). Its docstring says it is for Workpeg AI agent sandboxes, with no network by default. These limits are not confirmed to apply to Functions.
+- **Secrets pattern.** The sandbox module describes secrets injected at an egress proxy, so a container never holds them. This is a design statement for sandboxes, not Function behaviour. Whether Functions use the same pattern is unconfirmed.
+
+**Still unverified (send to Workpeg)**
+
+- Hook timeouts and resource limits, and whether a hook can make outbound calls (the AI provider, email, file storage).
+- Whether the compiled UI's `http.*` client can reach external hosts without a key in the page. The UI guide says it can reach non-Workpeg hosts, but a keyed call would need a Function, and Functions only run from hooks.
+- Maximum `limit` for `get_rows`, and whether Tables support server-side filtering beyond namespace.
+
+**Revised architecture implication**
+
+- Reads that need query logic (discovery, search, matching, dashboards) cannot use a Function. They need either Tables queries (not confirmed), a client-side approach on bounded windows (not acceptable at marketplace scale), or an external index (blocked on egress).
+- Writes can be validated by a `pre_save_hook`, which suits the state machine: submission, review, and approval rules can refuse invalid transitions.
+- AI checks can be a pre-save validation only if hooks allow outbound calls. Otherwise AI stays a fallback with a clear label until verified.
+
+**Open-question status:** still pending Workpeg's answers. This addendum changes Q2 (the UI-to-Function path, now answered as "not available; writes only") and narrows Q6 and Q3.
