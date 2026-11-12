@@ -126,3 +126,13 @@ Recommendation: confirm whether the merge was intended. If not, a revert commit 
 - **2026-11-12.** Public summary: only from explicitly public text. Preferred source is a business-written `public_summary`. Never automatically from `description`.
 - **2026-11-12.** PostgreSQL remains the single authority for roles, permissions, approvals and core marketplace data.
 - **Code status.** The build branch `build/bounty-core` holds a backend baseline copy, a contract and publisher module, and 11 unit tests. None of it is approved for merge. Nothing in it is wired into any route, and no schema has changed.
+
+## 12. Approval of 2026-11-12 (supersedes decisions 3, 5, 6 and 7 above)
+
+You approved all four proposed items. Built on `build/bounty-core` (pushed), tested against a local database only. Not applied to Neon, not merged to `main`, not deployed.
+
+- **Showcase schema:** migration 020 (`public_showcase`, `public_summary`, `showcase_state`, `showcase_synced_at`) and migration 021 (`showcase_version`, stale trigger). Commit `3037706`.
+- **Stale tracking:** approved and built as the trigger in migration 021.
+- **Python worker and `file_jobs`:** migration 020 and `worker/`. Commit `5f97d34`. Upload route enqueues PDF and DOCX jobs.
+- **Core build:** parity matrix in `build/bounty-core/docs/feature-parity.md`, plus the design tokens. Commit `0e86f00`.
+- **Still needs a separate yes:** the checker reading extracted text, the admin route that runs the showcase sync, and the Workpeg publish client and tables (blocked on Workpeg's written answers).
