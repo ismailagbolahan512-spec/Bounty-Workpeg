@@ -106,7 +106,7 @@ function submission(bountyId, extra = {}) {
     const cat = await api('GET', '/api/classification');
     check('classification endpoint is public and returns 200', cat.status === 200, cat.body);
     check('four execution modes are published', JSON.stringify(cat.body.modes.map((m) => m.id)) === JSON.stringify(['first_valid', 'competitive', 'team', 'independent']), cat.body.modes);
-    check('ten industries are published', cat.body.industries.length === 10, cat.body.industries.length);
+    check('eleven industries are published, including hospitality', cat.body.industries.length === 11 && cat.body.industries.some((i) => i.id === 'hospitality'), cat.body.industries.length);
     const jobs = cat.body.industries.flatMap((i) => i.job_types);
     check('every job type carries its full classification',
         jobs.length >= 25 && jobs.every((j) => j.recommended_mode && Array.isArray(j.alternative_modes) && j.deliverables.length > 0 &&

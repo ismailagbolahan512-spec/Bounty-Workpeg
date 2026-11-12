@@ -51,6 +51,7 @@ const INDUSTRIES = [
     { id: 'research', title: 'Research and Consulting' },
     { id: 'it', title: 'IT and Technical Support' },
     { id: 'operations', title: 'Business Operations and Administration' },
+    { id: 'hospitality', title: 'Hospitality and Hotels' },
 ];
 
 // requires_authorization: the business must give written authorization and rules of
@@ -183,6 +184,20 @@ const JOB_TYPES = [
     { id: 'ops-compliance-review', industry: 'operations', title: 'Compliance review', keywords: ['compliance', 'policy review', 'regulation', 'gdpr', 'checklist review'],
         description: 'Review a process or policy against a stated standard.', recommended: 'independent', alternatives: ['competitive'], workers: 3, multiple_winners: true,
         deliverables: ['Review report', 'Findings with references'], verification: 'Findings are checked against the standard.', human_approval: true, confidentiality: 'Standard', requires_authorization: false },
+
+    // Hospitality and Hotels
+    { id: 'hosp-housekeeping-audit', industry: 'hospitality', title: 'Housekeeping quality audit', keywords: ['housekeeping', 'room inspection', 'cleaning checklist', 'hotel audit', 'hygiene'],
+        description: 'Inspect rooms or public areas against a checklist and report every gap with a photo.', recommended: 'independent', alternatives: ['competitive'], workers: 3, multiple_winners: true,
+        deliverables: ['Completed checklist', 'Photo of each gap'], verification: 'The business compares the findings with its checklist.', human_approval: true, confidentiality: 'Standard', requires_authorization: false },
+    { id: 'hosp-menu-photography', industry: 'hospitality', title: 'Restaurant menu photography', keywords: ['menu photo', 'food photography', 'dishes', 'restaurant photos', 'menu shoot'],
+        description: 'Photograph each dish on the menu in natural light, to an agreed style.', recommended: 'competitive', alternatives: ['first_valid'], workers: 3, multiple_winners: false,
+        deliverables: ['Full-size JPG for each dish', 'Dish list with file names'], verification: 'The business checks each shot against the dish list.', human_approval: true, confidentiality: 'Standard', requires_authorization: false },
+    { id: 'hosp-mystery-guest', industry: 'hospitality', title: 'Mystery-guest service review', keywords: ['mystery guest', 'guest review', 'service visit', 'secret shopper', 'breakfast service'],
+        description: 'Visit as a guest, time the service, and report on what the guest experiences.', recommended: 'independent', alternatives: ['competitive'], workers: 3, multiple_winners: true,
+        deliverables: ['Timed service report', 'Photos of the buffet or lobby'], verification: 'The business checks the report against the visit brief.', human_approval: true, confidentiality: 'Standard', requires_authorization: false },
+    { id: 'hosp-event-staffing', industry: 'hospitality', title: 'Event staffing plan', keywords: ['event staffing', 'staff schedule', 'banquet', 'rota', 'event plan'],
+        description: 'Plan shifts and roles for an event, sized to the expected number of guests.', recommended: 'competitive', alternatives: ['team'], workers: 2, multiple_winners: false,
+        deliverables: ['Shift plan spreadsheet', 'Role list for each shift'], verification: 'The business checks staffing cover against the expected guest numbers.', human_approval: true, confidentiality: 'Standard', requires_authorization: false },
 ];
 
 const CATEGORY_FALLBACK = { dev: 'sw-feature-build', design: 'design-logo', content: 'writing-content', marketing: 'marketing-strategy' };
