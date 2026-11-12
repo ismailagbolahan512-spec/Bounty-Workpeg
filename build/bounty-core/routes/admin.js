@@ -9,6 +9,8 @@ const express = require('express');
 const { pool } = require('../db');
 const { authenticate, requireAdmin, httpError } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
+const { syncShowcase } = require('../services/showcase/sync');
+const { createShowcasePublisher } = require('../services/showcase/publish');
 
 const router = express.Router();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,6 +18,23 @@ const LIST_STATUSES = ['open', 'resolved', 'dismissed', 'all'];
 const DECISIONS = ['resolved', 'dismissed'];
 
 router.use(authenticate, requireAdmin);
+
+// ------------------------------------------------ POST /showcase/sync
+// Pushes stale showcase rows to Workpeg. Run by hand; Workpeg has no scheduler.
+// No Workpeg client is configured yet, so rows stay stale and the response says so.
+router.post('/showcase/sync', async(req, res, next) => {
+    try {
+        const requested = req.body && req.body.limit !== undefined ? Number(req.body.limit) : 50;
+        if (!Number.isInteger(requested) || requested < 1 || requested > 200) {
+            throw httpError(400, 'limit must be a whole number from 1 to 200');
+        }
+        const publisher = createShowcasePublisher();
+        const report = await syncShowcase(pool, publisher, { limit: requested });
+        res.json({ ...report, workpeg_configured: false });
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ------------------------------------------------ GET /reports
 router.get('/reports', async(req, res, next) => {
