@@ -6,15 +6,15 @@ from workpeg.ui import (
 
 class ShowcasePage(App):
     tasks = State([
-        {"title": "Translate the onboarding guide", "category": "Writing", "reward": "$250",
-         "deadline": "1 Dec 2026", "status": "Open",
-         "summary": "Translate our onboarding guide into French. Keep the headings and links."},
-        {"title": "Photograph the spring menu", "category": "Photography", "reward": "$180",
-         "deadline": "20 Nov 2026", "status": "In progress",
-         "summary": "Eight dishes, natural light, two angles each. Files as JPG at full size."},
-        {"title": "Audit the checkout flow", "category": "Testing", "reward": "$400",
-         "deadline": "5 Dec 2026", "status": "Under review",
-         "summary": "Walk through the checkout on mobile and desktop, then list every problem found."},
+        {"title": "Audit the housekeeping checklist on three floors", "category": "Hotel operations",
+         "reward": "$300", "deadline": "1 Dec 2026", "status": "Open",
+         "summary": "Walk three floors with the checklist. Note every missed step, with a photo."},
+        {"title": "Photograph the spring tasting menu", "category": "Restaurant",
+         "reward": "$180", "deadline": "20 Nov 2026", "status": "In progress",
+         "summary": "Eight dishes, natural light, two angles each. Full-size JPG files."},
+        {"title": "Mystery-guest review of breakfast service", "category": "Guest experience",
+         "reward": "$220", "deadline": "5 Dec 2026", "status": "Under review",
+         "summary": "Visit at 8am on two weekdays. Time the service, and report on the buffet and greetings."},
     ])
 
     def on_mount(self):
