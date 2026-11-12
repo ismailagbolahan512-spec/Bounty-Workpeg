@@ -51,9 +51,9 @@ function cleanSubmission(text) {
 
 // Runs every criterion. Never throws for provider problems: they become "not checked" items,
 // so the business still gets the automatic results.
-async function runSubmissionCheck(userId, submission, criteria) {
+async function runSubmissionCheck(userId, submission, criteria, files = { text: '', read: 0, unread: 0 }) {
     const deterministic = evaluateCriteria(criteria, submission);
-    const text = cleanSubmission([submission.title, submission.description, submission.notes_to_reviewer].filter(Boolean).join('\n\n'));
+    const text = cleanSubmission([submission.title, submission.description, submission.notes_to_reviewer, files.text].filter(Boolean).join('\n\n'));
     const subjective = deterministic.results.filter((r) => r.result === 'subjective');
 
     const items = new Map();
@@ -117,11 +117,37 @@ async function runSubmissionCheck(userId, submission, criteria) {
         ai_error: aiError,
         notes: [
             'Links are not opened or tested. Only the link address is compared.',
-            'Uploaded files are not supported yet, so file checks are not run.',
+            ...fileNotes(files),
             'Checks never reject work. You make the decision.',
         ],
         checked_at: new Date().toISOString(),
     };
 }
 
-module.exports = { runSubmissionCheck, cleanSubmission, CHECK_SCHEMA };
+// Text from a submission's PDF and Word files, read by the extraction worker (migration 020).
+// Only finished jobs are used. Anything else is counted as unread, so the report can say so.
+async function loadFileText(db, submissionId) {
+    const { rows } = await db.query(
+        `SELECT sf.original_name, fj.status, fj.extracted_text
+           FROM submission_files sf
+           LEFT JOIN file_jobs fj ON fj.submission_file_id = sf.id
+          WHERE sf.submission_id = $1
+          ORDER BY sf.created_at`,
+        [submissionId]
+    );
+    const readable = rows.filter((r) => r.status === 'done' && r.extracted_text);
+    return {
+        text: readable.map((r) => '[' + r.original_name + ']\n' + r.extracted_text).join('\n\n'),
+        read: readable.length,
+        unread: rows.length - readable.length,
+    };
+}
+
+function fileNotes(files) {
+    const notes = [];
+    if (files.read > 0) notes.push(files.read + ' PDF or Word file(s) were read as text and included, up to the length limit.');
+    if (files.unread > 0) notes.push(files.unread + ' file(s) could not be read as text. Check them yourself.');
+    return notes;
+}
+
+module.exports = { runSubmissionCheck, cleanSubmission, CHECK_SCHEMA, loadFileText };

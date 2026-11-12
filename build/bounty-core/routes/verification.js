@@ -7,7 +7,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { authenticate, requireRole, httpError } = require('../middleware/auth');
-const { runSubmissionCheck } = require('../services/checker');
+const { runSubmissionCheck, loadFileText } = require('../services/checker');
 const { buildVerification } = require('../services/verification');
 
 const router = express.Router();
@@ -37,7 +37,8 @@ router.post('/submissions/:id', authenticate, requireRole('business'), async(req
             description: row.bounty_description,
             requires_authorization: row.requires_authorization,
         };
-        const check = await runSubmissionCheck(req.user.id, row, row.acceptance_criteria || []);
+        const files = await loadFileText(pool, row.id);
+        const check = await runSubmissionCheck(req.user.id, row, row.acceptance_criteria || [], files);
         const report = buildVerification({
             submission: row, bounty, check, executionMode: row.execution_mode,
         });

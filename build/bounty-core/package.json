@@ -8,7 +8,8 @@
         "start": "node index.js",
         "test": "node scripts/run-tests.js",
         "test:showcase": "node --test scripts/showcase-contract-test.js",
-        "test:showcase-db": "node --test scripts/showcase-sync-test.js"
+        "test:showcase-db": "node --test scripts/showcase-sync-test.js",
+        "test:checker-files": "node --test scripts/checker-files-test.js"
     },
     "repository": {
         "type": "git",

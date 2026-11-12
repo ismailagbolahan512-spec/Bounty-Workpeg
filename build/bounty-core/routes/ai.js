@@ -4,7 +4,7 @@ const express = require('express');
 const { authenticate, requireRole, httpError } = require('../middleware/auth');
 const { pool } = require('../db');
 const { providerName, aiEnabled, featureOn, dailyLimit, usageToday, generateBountyDraft } = require('../services/ai');
-const { runSubmissionCheck } = require('../services/checker');
+const { runSubmissionCheck, loadFileText } = require('../services/checker');
 const { generateDraft } = require('../services/portfolio');
 
 const router = express.Router();
@@ -83,7 +83,8 @@ router.post('/submissions/:id/check', authenticate, requireRole('business'), per
         if (!UUID_RE.test(submissionId)) throw httpError(400, 'Invalid submission id');
 
         const sub = await ownedSubmission(submissionId, req.user);
-        const report = await runSubmissionCheck(req.user.id, sub, sub.acceptance_criteria || []);
+        const files = await loadFileText(pool, sub.id);
+        const report = await runSubmissionCheck(req.user.id, sub, sub.acceptance_criteria || [], files);
         const { rows } = await pool.query(
             `INSERT INTO submission_checks (submission_id, bounty_id, requested_by, results, ai_used)
              VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
