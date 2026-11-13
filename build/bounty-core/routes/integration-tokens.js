@@ -33,6 +33,12 @@ router.get('/', async(req, res, next) => {
     } catch (err) { next(err); }
 });
 
+router.get('/confirmations', async(req, res, next) => {
+    try {
+        res.json({ confirmations: await tokens.listPendingConfirmations(req.user.id) });
+    } catch (err) { next(err); }
+});
+
 router.post('/', async(req, res, next) => {
     try {
         requireActive(req.user);

@@ -208,9 +208,21 @@ async function consumeConfirmation(client, { confirmationId, tokenId, action, pa
     return rowCount === 1;
 }
 
+// Pending approvals for the user's own tokens: not yet approved, not used, not expired.
+async function listPendingConfirmations(userId) {
+    const { rows } = await pool.query(
+        `SELECT c.id, c.action, c.requested_at, c.expires_at, t.id AS token_id, t.label AS token_label
+         FROM integration_confirmations c JOIN integration_tokens t ON t.id = c.token_id
+         WHERE t.user_id = $1 AND c.approved_at IS NULL AND c.consumed_at IS NULL AND c.expires_at > NOW()
+         ORDER BY c.requested_at DESC`,
+        [userId]
+    );
+    return rows;
+}
+
 module.exports = {
     TOKEN_PREFIX, DEFAULT_DAYS, MAX_DAYS, CONFIRM_MINUTES, SCOPE_ROLES, SENSITIVE_SCOPES,
     hashToken, roleAllows, validateScopes, stableStringify, confirmationHash,
     issueToken, loadActiveToken, listTokens, revokeToken, revokeAllForUser, rotateToken,
-    requestConfirmation, approveConfirmation, consumeConfirmation,
+    requestConfirmation, approveConfirmation, consumeConfirmation, listPendingConfirmations,
 };
