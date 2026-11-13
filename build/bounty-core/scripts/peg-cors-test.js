@@ -29,11 +29,13 @@ function run(origins, { url = '/api/peg/bounties', method = 'GET', origin } = {}
     return { res, nextCalled };
 }
 
-test('an allowed peg origin gets exact CORS headers and no credentials header', () => {
+test('an allowed peg origin gets exact CORS headers and credentials allowed', () => {
     const { res, nextCalled } = run(`${PEG},${DEV}`, { origin: PEG });
     assert.equal(nextCalled, true);
     assert.equal(res.headers['access-control-allow-origin'], PEG);
-    assert.equal(res.headers['access-control-allow-credentials'], undefined);
+    // The Workpeg SDK sends fetches with credentials: 'include'; the preflight must allow it,
+    // even though our integration auth path ignores any cookies it receives.
+    assert.equal(res.headers['access-control-allow-credentials'], 'true');
     assert.equal(res.headers['access-control-allow-headers'], 'Authorization, Content-Type');
     assert.equal(res.headers.vary, 'Origin');
 });

@@ -72,14 +72,44 @@
                 days: Number(document.getElementById('tok-days').value)
             } }).then(function(res) {
                 var tok = res.token || '';
-                result.innerHTML = '<p><strong>Your token (copy it now, it is not shown again):</strong></p>' +
-                    '<p style="font-family:monospace;word-break:break-all;background:var(--surface);padding:8px;border-radius:8px;border:1px solid var(--line)">' + esc(tok) + '</p>' +
-                    '<p class="small muted">Paste this into the Bounty peg on Workpeg to connect.</p>';
+                // The token is shown ONCE. No auto-reload — the user tells us when they are done.
+                result.innerHTML = '<p><strong>Your token (copy it now — it is not shown again)</strong></p>' +
+                    '<p id="tok-value" style="font-family:monospace;word-break:break-all;background:var(--surface);padding:10px 12px;border-radius:8px;border:1px solid var(--line);margin:8px 0">' + esc(tok) + '</p>' +
+                    '<div class="form-actions">' +
+                      '<button type="button" class="btn btn-sm btn-primary" id="tok-copy">Copy token</button>' +
+                      '<button type="button" class="btn btn-sm" id="tok-done">Done</button>' +
+                      '<span class="small muted" id="tok-copy-msg" style="margin-left:8px"></span>' +
+                    '</div>' +
+                    '<p class="small muted" style="margin-top:8px">Paste this into the Bounty peg on Workpeg to connect.</p>';
                 result.hidden = false;
                 btn.disabled = false;
                 document.getElementById('tok-name').value = '';
-                // Reload the list after 1s so it shows the new row too.
-                setTimeout(function() { K().go('connections/workpeg'); }, 1500);
+                document.getElementById('tok-copy').addEventListener('click', function() {
+                    var msg = document.getElementById('tok-copy-msg');
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(tok).then(function() {
+                            msg.textContent = 'Copied.';
+                        }).catch(function() {
+                            // Fallback: select the text for the user.
+                            var range = document.createRange();
+                            range.selectNodeContents(document.getElementById('tok-value'));
+                            var sel = window.getSelection();
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                            msg.textContent = 'Press Ctrl+C to copy.';
+                        });
+                    } else {
+                        var range = document.createRange();
+                        range.selectNodeContents(document.getElementById('tok-value'));
+                        var sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        msg.textContent = 'Press Ctrl+C to copy.';
+                    }
+                });
+                document.getElementById('tok-done').addEventListener('click', function() {
+                    K().go('connections/workpeg');
+                });
             }).catch(function(error2) {
                 error.textContent = K().friendlyApiError(error2, 'Could not create the token.');
                 error.hidden = false;

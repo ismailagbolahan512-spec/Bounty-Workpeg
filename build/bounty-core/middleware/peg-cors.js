@@ -1,11 +1,14 @@
 // middleware/peg-cors.js — lets a Workpeg peg's browser call /api/peg, and nothing else.
 //
 // The peg is served from <namespace>.workpeg.com, so its calls are cross-origin. Only the
-// Bearer integration token (bnt_wp_...) authenticates these calls. No cookie is sent or read,
-// so credentials are never allowed: a browser then sends no cookies and gets no session.
+// Bearer integration token (bnt_wp_...) authenticates these calls. The Workpeg SDK's http.*
+// always sets credentials: 'include' on its fetches, so we respond with
+// Access-Control-Allow-Credentials: true to satisfy the browser's preflight. Any cookies the
+// browser does send are ignored on the peg API — authenticateIntegration reads only the Bearer
+// token and never consults cookies for these routes.
 //
 // PEG_ORIGINS is a comma-separated list of exact origins, for example
-//   https://bounty-hospitality.workpeg.com,https://bounty-hospitality.dev.workpeg.com
+//   https://bounty.workpeg.com,https://bounty.dev.workpeg.com
 // Wildcards, paths, query strings and plain http to a non-loopback host are refused, and the
 // bad entry is dropped with a log line. An unset or empty list allows no origin.
 
@@ -61,6 +64,10 @@ function pegCors(options = {}) {
         res.set('Access-Control-Allow-Methods', ALLOWED_METHODS);
         res.set('Access-Control-Allow-Headers', ALLOWED_HEADERS);
         res.set('Access-Control-Max-Age', String(MAX_AGE_SECONDS));
+        // The Workpeg SDK's http.* always fetches with credentials: 'include'. Setting this header
+        // satisfies the browser's preflight. Any cookies the browser does send are ignored by the
+        // integration auth path (authenticateIntegration reads only the Bearer token).
+        res.set('Access-Control-Allow-Credentials', 'true');
         if (req.method === 'OPTIONS') return res.status(204).end();
         return next();
     };
