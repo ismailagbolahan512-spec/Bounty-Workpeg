@@ -19,7 +19,7 @@ Status key: **Present** = route and schema exist and the existing suites cover i
 | Work | Messages and workspace per bounty | Present | `routes/workspace.js`, `bounties.js` `/:id/messages`; migration 003 |
 | Review | Review queue, approve, reject, request evidence | Present | `submissions.js`, `bounties.js` `/:id/approve`, `/:id/reject`, `/:id/request-evidence`, `/:id/decide` |
 | Review | Automated checks on submissions | Present | `services/checker.js`; reads at most 4,000 characters of text, `checker-test.js` (mock AI suites) |
-| Review | Text extraction for PDF and Word submissions | **Added** (this branch) | `worker/` Python worker; migration 020 `file_jobs`; upload route enqueues jobs. The checker does not read extracted text yet (see below) |
+| Review | Text extraction for PDF and Word submissions | **Added** (this branch) | `worker/` Python worker; migration 022 `file_jobs`; upload route enqueues jobs. The checker does not read extracted text yet (see below) |
 | Review | Reviews of workers and businesses, reputation | Present | `routes/reviews.js`, `reputation.js`, migration 007 |
 | Trust | Verification, proof of ability, duplicates detection | Present | `verification.js`, `assessments.js`, `duplicates.js`, migrations 006, 009, 010 |
 | Trust | Disputes and appeals | Present | `routes/disputes.js`, `admin.js` appeals, migration 010 |
@@ -36,7 +36,7 @@ Status key: **Present** = route and schema exist and the existing suites cover i
 | Dashboards | Admin queues | Present | `routes/admin.js` (queue, reports, enforcement, appeals) |
 | Roles | Business, worker, admin roles enforced in the backend | Present | `middleware/auth.js`; `security-test.js` |
 | Roles | Roles in PostgreSQL only; Workpeg not a role authority | Present (by design) | `docs/integration-architecture.md`, decision 4 |
-| Showcase | Public showcase of opted-in bounties | **Added** (this branch), partly | migrations 020 and 021; `services/showcase/`. The Workpeg publish client is not built; rows stay stale until the Workpeg Tables API is confirmed |
+| Showcase | Public showcase of opted-in bounties | **Added** (this branch), partly | migrations 022 and 023; `services/showcase/`. The Workpeg publish client is not built; rows stay stale until the Workpeg Tables API is confirmed |
 | Design | Themes, dark-first "Charcoal & Gold" default, light "Off-white & Gold" | **Added** (this branch) | `public/bounty.css` tokens; `public/bounty.js` THEMES. Existing themes kept |
 | Design | Full visual pass across every screen | **Gap** | Only tokens changed. Component-level restyling not done |
 
@@ -44,11 +44,11 @@ Status key: **Present** = route and schema exist and the existing suites cover i
 
 1. **Checker does not read the extracted text yet.** The worker writes `file_jobs.extracted_text`. `services/checker.js` needs a change to read it, which is a separate, small approval.
 2. **Workpeg publish client.** `services/showcase/publish.js` has no client. Rows stay stale until the Tables API endpoint and auth are confirmed in writing.
-3. **Mirror publish is not wired to routes.** The trigger in migration 021 marks rows stale on every write path. `syncShowcase` must be run by an admin action, and that admin route is not added yet.
+3. **Mirror publish is not wired to routes.** The trigger in migration 023 marks rows stale on every write path. `syncShowcase` must be run by an admin action, and that admin route is not added yet.
 4. **Escrow and payouts** are outside this build.
 5. **UI coverage per feature** was not verified screen by screen.
 
 ## Schema added on this branch (not applied to any production database)
 
-- Migration 020: `bounties.public_showcase`, `bounties.public_summary`, `bounties.showcase_state`, `bounties.showcase_synced_at`, table `file_jobs`.
-- Migration 021: `bounties.showcase_version`, trigger `bounties_showcase_mark_stale_trg`.
+- Migration 022: `bounties.public_showcase`, `bounties.public_summary`, `bounties.showcase_state`, `bounties.showcase_synced_at`, table `file_jobs`.
+- Migration 023: `bounties.showcase_version`, trigger `bounties_showcase_mark_stale_trg`.

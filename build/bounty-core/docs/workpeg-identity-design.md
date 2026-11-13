@@ -103,7 +103,7 @@ Never granted to a Workpeg token, whatever the user asks for:
 
 | # | Change | Type | Approval needed |
 |---|---|---|---|
-| 1 | Renumber showcase and file-jobs migrations 020 and 021 to 022 and 023 | file rename | yes (confirm) |
+| 1 | Renumber showcase and file-jobs migrations 020 and 021 to 022 and 023 | file rename | approved; done on branch |
 | 2 | Add `integration_tokens` table | additive schema | yes |
 | 3 | Add `integration_confirmations` table | additive schema | yes |
 | 4 | `authenticateIntegration` middleware; `authenticate` rejects `bnt_wp_` tokens | code, `middleware/auth.js` | after design approval |

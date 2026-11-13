@@ -124,7 +124,7 @@ async function runSubmissionCheck(userId, submission, criteria, files = { text: 
     };
 }
 
-// Text from a submission's PDF and Word files, read by the extraction worker (migration 020).
+// Text from a submission's PDF and Word files, read by the extraction worker (migration 022).
 // Only finished jobs are used. Anything else is counted as unread, so the report can say so.
 async function loadFileText(db, submissionId) {
     const { rows } = await db.query(

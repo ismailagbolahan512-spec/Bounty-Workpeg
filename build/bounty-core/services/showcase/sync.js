@@ -3,7 +3,7 @@
 // Run on demand by an admin action (Workpeg has no scheduler). Safe to run repeatedly.
 //
 // Concurrency: a row is set to 'published' only if showcase_version is unchanged since it was read.
-// If the bounty changed during the publish, the trigger in migration 021 bumped the version, so the
+// If the bounty changed during the publish, the trigger in migration 023 bumped the version, so the
 // row stays stale and the next run publishes the newer data.
 
 const { STATE } = require('./publish');

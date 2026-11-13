@@ -86,7 +86,7 @@ router.post('/:id/files',
                 [fileId, id, req.user.id, key, name, contentType, body.length, digest]
             );
 
-            // PDF and Word files get text extracted by the Python worker (migration 020). Same transaction,
+            // PDF and Word files get text extracted by the Python worker (migration 022). Same transaction,
             // so a job exists if and only if the file does.
             const extractable = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
             if (extractable.includes(contentType)) {

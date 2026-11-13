@@ -1,4 +1,4 @@
-// scripts/showcase-sync-test.js — database tests for the showcase trigger (migration 021) and sync.
+// scripts/showcase-sync-test.js — database tests for the showcase trigger (migration 023) and sync.
 // Needs DATABASE_URL (a LOCAL test database only). Skipped when it is not set.
 // Run: DATABASE_URL=... DATABASE_SSL=false npm run test:showcase-db
 const { test, after } = require('node:test');
