@@ -262,7 +262,7 @@
         var token = (data && data.token) || (data && data.accessToken) || (data && data.access_token) || user.token || '';
         var name = user.name || user.full_name || (user.email ? user.email.split('@')[0] : '') || 'Member';
         return {
-            user: { id: user.id || user.user_id, email: user.email, name: name, role: user.role, email_verified: user.email_verified === true, is_admin: user.is_admin === true },
+            user: { id: user.id || user.user_id, email: user.email, name: name, role: user.role, is_admin: user.is_admin === true },
             token: token
         };
     }
@@ -461,7 +461,7 @@
                 state.profile = me;
                 syncVerified(me);
                 // Onboarding waits until the email is confirmed, so the two prompts never overlap.
-        if (getRole() === 'worker' && me.email_verified === true && me.onboarding_done === false) showOnboarding(me);
+        if (getRole() === 'worker' && me.onboarding_done === false) showOnboarding(me);
             })
             .catch(function() {});
     }
@@ -2671,7 +2671,6 @@
         else if (route === 'auth/signup' || route === 'signup') authPage('signup');
         else if (route === 'auth/forgot') forgotPage();
         else if (route === 'reset') resetPage();
-        else if (route === 'verify') verifyPage();
         else if (route === 'admin') adminPage();
         else if (route === 'terms') legalPage('terms');
         else if (route === 'privacy') legalPage('privacy');
@@ -2690,7 +2689,6 @@
 
         renderHeader();
         renderFooter();
-        showVerifyBanner(route);
         app.focus({ preventScroll: true });
         if (isAuthenticated()) {
             loadNotifications();
@@ -2715,14 +2713,10 @@
         return new URLSearchParams(query).get(name) || '';
     }
 
-    // Keeps the cached user in step with the server's view (verification and admin flag).
+    // Keeps the cached user in step with the server's view (admin flag).
     function syncVerified(me) {
         if (!state.user || !me) return;
         var changed = false;
-        if (me.email_verified === true && state.user.email_verified !== true) {
-            state.user.email_verified = true;
-            changed = true;
-        }
         if (me.is_admin === true && state.user.is_admin !== true) {
             state.user.is_admin = true;
             changed = true;
@@ -2734,41 +2728,6 @@
         if (!changed) return;
         setSession(state.user, getToken());
         renderFooter();
-        if (state.user.email_verified) {
-            var banner = $('#verify-banner');
-            if (banner) banner.remove();
-        }
-    }
-
-    function showVerifyBanner(route) {
-        var old = $('#verify-banner');
-        if (old) old.remove();
-        if (!isAuthenticated() || !state.user || state.user.email_verified !== false) return;
-        if (route === 'verify' || route === 'reset') return;
-
-        var node = document.createElement('div');
-        node.id = 'verify-banner';
-        node.className = 'notice warning';
-        node.setAttribute('role', 'status');
-        node.innerHTML = '<div class="container ux-row-between">' +
-            '<span>Confirm your email to post bounties or submit work. Check your inbox for the link.</span>' +
-            '<button class="btn btn-sm" type="button" id="resend-verify">Resend email</button></div>';
-        app.insertBefore(node, app.firstChild);
-
-        on($('#resend-verify'), 'click', function(event) {
-            var button = event.currentTarget;
-            button.disabled = true;
-            api('/api/auth/resend-verification', { method: 'POST' })
-                .then(function(data) {
-                    toast(data && data.already_verified ? 'Your email is already verified.' : 'Verification email sent. Check your inbox.', 'success');
-                })
-                .catch(function(error) {
-                    toast(friendlyApiError(error, 'Could not send the email. Try again later.'), 'error');
-                })
-                .then(function() {
-                    if (document.contains(button)) button.disabled = false;
-                });
-        });
     }
 
     function accountCard(title, intro, bodyHTML) {
@@ -2853,34 +2812,6 @@
         });
     }
 
-    function verifyPage() {
-        var token = queryParam('token');
-        app.innerHTML = accountCard('Confirming your email.', 'This takes a moment.',
-            '<h2>Checking your link…</h2><div class="loading-line"><span class="spinner"></span> Please wait.</div>');
-
-        function showResult(ok, message) {
-            var next = isAuthenticated() ?
-                '<a class="btn btn-primary btn-block" href="#/dashboard">Go to dashboard ' + icon('arrow', 16) + '</a>' :
-                '<a class="btn btn-primary btn-block" href="#/auth/login">Log in ' + icon('arrow', 16) + '</a>';
-            app.innerHTML = accountCard(ok ? 'Email confirmed.' : 'Link not valid.', ok ? 'You can now post bounties and submit work.' : 'Request a new link from the app.',
-                '<h2>' + (ok ? 'You are verified' : 'Something went wrong') + '</h2><p>' + escapeHTML(message) + '</p>' + next);
-        }
-
-        if (!token) return showResult(false, 'This link is missing its code.');
-
-        api('/api/auth/verify', { method: 'POST', body: { token: token }, auth: false })
-            .then(function() {
-                if (state.user) {
-                    state.user.email_verified = true;
-                    setSession(state.user, getToken());
-                }
-                showResult(true, 'Thanks for confirming your email.');
-            })
-            .catch(function(error) {
-                showResult(false, friendlyApiError(error, 'This verification link is invalid or has expired.'));
-            });
-    }
-
     function workerProfilePage(id) {
         app.innerHTML = '<section class="page"><div class="container"><a class="back-link" href="#/bounties">' + icon('arrowLeft', 16) + ' Back to bounties</a><div class="loading-line"><span class="spinner"></span> Loading profile…</div></div></section>';
 
@@ -2938,10 +2869,10 @@
             ['Changes', ['We may update these terms. We will tell users about material changes before they take effect.']]
         ] : [
             ['What we collect', ['Account details you give us (name, email, role). Profile details you add (bio, skills, photo, website, location). Bounties, submissions, reviews and reports you create. Basic technical data such as IP address, used to keep the service secure.']],
-            ['How we use it', ['To run the marketplace, sign you in, verify your email, reset your password, send you account and activity notifications, and keep the service secure.']],
+            ['How we use it', ['To run the marketplace, sign you in, reset your password, send you account and activity notifications, and keep the service secure.']],
             ['What is public', ['Your name, profile details, public reviews, and completed bounty titles appear on your public profile. Your email address is never shown publicly.']],
             ['Who we share it with', ['Service providers that help us run Bounty: hosting, database, and email delivery. When payments go live, our payment partner will receive the details it needs to process payments. We do not sell your personal data.']],
-            ['Security', ['Passwords are stored as one-way hashes. Email verification and reset links are stored only as hashes and expire. All traffic should use HTTPS.']],
+            ['Security', ['Passwords are stored as one-way hashes. Password reset links are stored only as hashes and expire. All traffic should use HTTPS.']],
             ['How long we keep it', ['We keep your account while it is active. You can ask us to delete your account and its personal data, subject to records we must keep by law.']],
             ['Your rights', ['You can ask to see, correct, or delete your personal data. Contact [privacy email]. [Compliance with the Nigeria Data Protection Act 2023 to be reviewed by counsel.]']],
             ['Children', ['Bounty is not intended for anyone under 18.']],

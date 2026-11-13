@@ -51,7 +51,6 @@ app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 300 }));
 // Many users share one IP on mobile networks, so these limits are generous.
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: Number(process.env.AUTH_IP_LIMIT) || 300, message: 'Too many attempts. Try again in 15 minutes.' }));
 app.use('/api/auth/forgot', rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: 'Too many reset requests. Try again in an hour.' }));
-app.use('/api/auth/resend-verification', rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: 'Too many resend requests. Try again in an hour.' }));
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/bounties', require('./routes/bounties'));

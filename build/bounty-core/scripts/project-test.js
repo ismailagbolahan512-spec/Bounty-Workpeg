@@ -76,9 +76,6 @@ async function signupVerifiedBase(email, role, name) {
     const r = await api('POST', '/api/auth/signup', { email, password: 'password123', name, role });
     if (r.status !== 201) throw new Error(`signup failed for ${email}: ${JSON.stringify(r.body)}`);
     await sleep(200);
-    const token = tokenFromLog(email, 'verify?token=');
-    const v = await api('POST', '/api/auth/verify', { token });
-    if (v.status !== 200) throw new Error(`verify failed for ${email}: ${JSON.stringify(v.body)}`);
     return r.body.token;
 }
 
@@ -130,7 +127,7 @@ function startMockProvider() {
 
     // --- permissions
     const unverifiedCreate = await api('POST', '/api/projects', { title: 'Nope', description: 'Nope nope nope', tasks: [task('x task')] }, unverified.body.token);
-    check('unverified business cannot create a project (403)', unverifiedCreate.status === 403, unverifiedCreate.body);
+    check('business signup can create a project right away (201)', unverifiedCreate.status === 201, unverifiedCreate.body);
     const workerCreate = await api('POST', '/api/projects', { title: 'Nope', description: 'Nope nope nope', tasks: [task('x task')] }, w1);
     check('worker cannot create a project (403)', workerCreate.status === 403, workerCreate.body);
 

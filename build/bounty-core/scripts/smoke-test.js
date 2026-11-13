@@ -57,34 +57,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const PASS = 'password123';
     const NEW_PASS = 'newpassword456';
 
-    // --- signup and verification gating
+    // --- signup
     const biz = await api('POST', '/api/auth/signup', { email: bizEmail, password: PASS, name: 'Test Biz', role: 'business' });
-    check('business signup returns 201 and unverified', biz.status === 201 && biz.body.email_verified === false, biz.body);
+    check('business signup returns 201', biz.status === 201, biz.body);
     const worker = await api('POST', '/api/auth/signup', { email: workerEmail, password: PASS, name: 'Test Worker', role: 'worker' });
     check('worker signup returns 201', worker.status === 201, worker.body);
     const other = await api('POST', '/api/auth/signup', { email: otherEmail, password: PASS, name: 'Other Person', role: 'worker' });
     check('third account signup returns 201', other.status === 201, other.body);
     await sleep(300);
 
-    const bounty0 = await api('POST', '/api/bounties', {
-        title: 'Unverified test bounty', description: 'This should be blocked until email is verified.',
-        category: 'dev', difficulty: 'easy', reward_amount: 100,
-        deadline: new Date(Date.now() + 86400000).toISOString(), submission_type: 'github',
-    }, biz.body.token);
-    check('unverified business cannot post a bounty (403)', bounty0.status === 403, bounty0.body);
-
-    const bizVerifyToken = tokenFromLog(bizEmail, 'verify?token=');
-    check('verification email was logged for business', !!bizVerifyToken);
-    const v1 = await api('POST', '/api/auth/verify', { token: bizVerifyToken });
-    check('business verifies email (200)', v1.status === 200, v1.body);
-    const v2 = await api('POST', '/api/auth/verify', { token: bizVerifyToken });
     await acceptFor(biz.body && biz.body.role, biz.body && biz.body.token);
-    check('verification link cannot be reused (400)', v2.status === 400, v2.body);
-
-    const workerVerifyToken = tokenFromLog(workerEmail, 'verify?token=');
-    const wv = await api('POST', '/api/auth/verify', { token: workerVerifyToken });
     await acceptFor(worker.body && worker.body.role, worker.body && worker.body.token);
-    check('worker verifies email (200)', wv.status === 200, wv.body);
 
     // --- bounty, submission, approval
     const bounty = await api('POST', '/api/bounties', {
@@ -92,18 +75,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         category: 'dev', difficulty: 'easy', reward_amount: 100,
         deadline: new Date(Date.now() + 86400000).toISOString(), submission_type: 'github',
     }, biz.body.token);
-    check('verified business posts a bounty (201)', bounty.status === 201, bounty.body);
+    check('business posts a bounty (201)', bounty.status === 201, bounty.body);
     const bountyId = bounty.body.id;
-
-    const sub0 = await api('POST', '/api/submissions', {
-        bounty_id: bountyId, title: 'First attempt', description: 'Work for the smoke test.',
-    }, other.body.token);
-    check('unverified worker cannot submit (403)', sub0.status === 403, sub0.body);
 
     const sub = await api('POST', '/api/submissions', {
         bounty_id: bountyId, title: 'My fix', description: 'Here is the completed work, with the page built and tested.', github_link: 'https://github.com/example/fix',
     }, worker.body.token);
-    check('verified worker submits (201)', sub.status === 201, sub.body);
+    check('worker submits (201)', sub.status === 201, sub.body);
 
     const approve = await api('POST', `/api/submissions/${sub.body.id}/approve`, null, biz.body.token);
     check('business approves the submission (200)', approve.status === 200, approve.body);
@@ -161,17 +139,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await acceptFor(newSignin.body && newSignin.body.role, newSignin.body && newSignin.body.token);
     check('new password works (200)', newSignin.status === 200, newSignin.body);
 
-    // --- profile shows verification state
+    // --- profile
     const me = await api('GET', '/api/profile/me', null, newSignin.body.token);
-    check('profile reports email_verified true for verified worker', me.status === 200 && me.body.email_verified === true, me.body);
+    check('profile loads for a signed-in worker', me.status === 200, me.body);
 
     // --- admin: reports queue, resolve, notify reporter
     const adminEmail = `admin+${stamp}@test.com`;
     const adminSignup = await api('POST', '/api/auth/signup', { email: adminEmail, password: PASS, name: 'Test Admin', role: 'worker' });
     await sleep(300);
-    const adminVerify = await api('POST', '/api/auth/verify', { token: tokenFromLog(adminEmail, 'verify?token=') });
     await acceptFor(adminSignup.body && adminSignup.body.role, adminSignup.body && adminSignup.body.token);
-    check('admin account verifies', adminVerify.status === 200, adminVerify.body);
     const { pool } = require('../db');
     await pool.query('UPDATE users SET is_admin = TRUE WHERE email = $1', [adminEmail]);
     const adminLogin = await api('POST', '/api/auth/signin', { email: adminEmail, password: PASS });
@@ -216,6 +192,5 @@ async function acceptFor(role, token) {
     const kind = { business: 'creator_protection_business', worker: 'worker_submission_ip' }[role];
     if (!kind || !token) return;
     const r = await api('POST', '/api/protection/agreements/accept', { kind }, token);
-    // Unverified accounts are refused here by design; ignore so those tests can check the refusal.
     void r;
 }

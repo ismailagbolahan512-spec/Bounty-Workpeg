@@ -48,9 +48,6 @@ router.get('/status', authenticate, requireRole('business'), async(req, res, nex
 // POST /api/ai/bounty-draft  { prompt }  -> a draft to review in the create form (saves nothing)
 router.post('/bounty-draft', authenticate, requireRole('business'), perMinuteLimit, async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) {
-            throw httpError(403, 'Verify your email before using AI drafting');
-        }
         const prompt = typeof (req.body || {}).prompt === 'string' ? req.body.prompt.trim() : '';
         if (prompt.length < 10) throw httpError(400, 'Describe the goal in at least 10 characters');
         if (prompt.length > 4000) throw httpError(400, 'Keep the description under 4000 characters');
@@ -78,7 +75,6 @@ async function ownedSubmission(submissionId, user) {
 // POST /api/ai/submissions/:id/check  -> runs the checks and saves the report. Changes nothing else.
 router.post('/submissions/:id/check', authenticate, requireRole('business'), perMinuteLimit, async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before running checks');
         const submissionId = req.params.id;
         if (!UUID_RE.test(submissionId)) throw httpError(400, 'Invalid submission id');
 
@@ -116,7 +112,6 @@ router.get('/submissions/:id/check', authenticate, requireRole('business'), asyn
 // POST /api/ai/proof-of-ability/generate  -> a draft for the worker to review and edit. Saves nothing.
 router.post('/proof-of-ability/generate', authenticate, requireRole('worker'), perMinuteLimit, async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before drafting a summary');
         const result = await generateDraft(req.user.id);
         res.json(result);
     } catch (err) {

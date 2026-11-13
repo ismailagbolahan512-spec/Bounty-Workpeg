@@ -65,9 +65,6 @@ async function signupVerifiedBase(email, role, name) {
     const r = await api('POST', '/api/auth/signup', { email, password: 'password123', name, role });
     if (r.status !== 201) throw new Error(`signup failed for ${email}: ${JSON.stringify(r.body)}`);
     await sleep(200);
-    const token = tokenFromLog(email, 'verify?token=');
-    const v = await api('POST', '/api/auth/verify', { token });
-    if (v.status !== 200) throw new Error(`verify failed for ${email}: ${JSON.stringify(v.body)}`);
     return r.body.token;
 }
 

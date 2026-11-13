@@ -59,7 +59,6 @@ async function insertProjectFromPlan(client, businessId, plan, options = {}) {
 router.post('/', authenticate, requireRole('business'), async(req, res, next) => {
     const client = await pool.connect();
     try {
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before creating a project');
         const plan = validatePlan(req.body || {});
 
         await client.query('BEGIN');
@@ -81,7 +80,6 @@ router.post('/', authenticate, requireRole('business'), async(req, res, next) =>
 // ------------------------------------------- POST /api/projects/plan (AI draft)
 router.post('/plan', authenticate, requireRole('business'), async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before planning a project');
         const prompt = typeof (req.body || {}).prompt === 'string' ? req.body.prompt.trim() : '';
         if (prompt.length < 10 || prompt.length > PLAN_PROMPT_MAX) {
             throw httpError(400, `Describe the project in 10-${PLAN_PROMPT_MAX} characters`);

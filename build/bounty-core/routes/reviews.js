@@ -18,9 +18,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 router.post('/', authenticate, async(req, res, next) => {
     const client = await pool.connect();
     try {
-        if (!req.user.email_verified_at) {
-            throw httpError(403, 'Verify your email before leaving a review');
-        }
         const { bounty_id, rating, comment } = req.body || {};
 
         const bountyId = typeof bounty_id === 'string' ? bounty_id.trim() : '';

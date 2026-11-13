@@ -424,9 +424,6 @@ router.get('/:id', optionalAuth, async(req, res, next) => {
 
 router.post('/', authenticate, requireRole('business'), async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) {
-            throw httpError(403, 'Verify your email before posting a bounty');
-        }
         await assertActiveAccount(req.user.id);
         await requireAgreement(dbq, req.user.id, 'creator_protection_business');
         const {
@@ -603,7 +600,6 @@ router.patch('/:id/close', authenticate, requireRole('business'), async(req, res
 router.post('/:id/accept', authenticate, requireRole('worker'), async(req, res, next) => {
     const client = await pool.connect();
     try {
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before taking tasks');
         const bountyId = req.params.id;
         if (!UUID_RE_B.test(bountyId)) throw httpError(400, 'Invalid bounty ID');
         const body = req.body || {};

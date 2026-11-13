@@ -57,7 +57,6 @@ async function signupVerified(email, role, name) {
 async function signupVerifiedBase(email, role, name) {
     const r = await api('POST', '/api/auth/signup', { email, password: 'password123', name, role });
     await sleep(250);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(email, 'verify?token=') });
     return { token: r.body.token, id: r.body.id, email, name, role };
 }
 const task = (title, extra) => Object.assign({ title, description: 'Work item: ' + title + ' details.', category: 'dev', difficulty: 'easy', reward_amount: 90, deadline: inDays(6), submission_type: 'github' }, extra || {});

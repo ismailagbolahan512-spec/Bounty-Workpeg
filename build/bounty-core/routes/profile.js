@@ -13,7 +13,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SELECT_ME = `SELECT id, email, name, role, bio, avatar_url, categories, skills, website, location,
   onboarding_done, total_earned, reputation_score,
   timezone, languages, weekly_hours, to_char(available_from, 'YYYY-MM-DD') AS available_from, discoverable, country,
-  (email_verified_at IS NOT NULL) AS email_verified, is_admin
+  is_admin
   FROM users WHERE id = $1`;
 
 function publicUser(row) {
@@ -37,7 +37,6 @@ function publicUser(row) {
     available_from: row.available_from || null,
     discoverable: row.discoverable === true,
     country: row.country ? String(row.country).trim() : null,
-    email_verified: row.email_verified === true,
     is_admin: row.is_admin === true
   };
 }

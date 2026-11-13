@@ -58,7 +58,6 @@ async function signupVerified(email, role, name) {
 async function signupVerifiedBase(email, role, name) {
     const r = await api('POST', '/api/auth/signup', { email, password: 'password123', name, role });
     await sleep(200);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(email, 'verify?token=') });
     return { token: r.body.token, id: r.body.id, email, name };
 }
 const words = (n) => Array.from({ length: n }, (_, i) => 'word' + (i % 9)).join(' ');
