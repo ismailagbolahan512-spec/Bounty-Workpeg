@@ -10,6 +10,7 @@
 const { httpError } = require('../middleware/auth');
 const { resolveTimeZone, currencyForRegion, validateTaskCurrency, isCountry } = require('./regions');
 const loc = require('./location');
+const catalogue = require('./hospitality-catalogue');
 
 const CATEGORY = 'hospitality';
 const DEADLINE_MIN_HOURS = 1;
@@ -100,7 +101,10 @@ function validateRequest(body, now) {
     const hours = (deadline.getTime() - now.getTime()) / 3600000;
     if (hours < DEADLINE_MIN_HOURS) throw httpError(400, `The deadline must be at least ${DEADLINE_MIN_HOURS} hour from now`);
     if (hours > DEADLINE_MAX_DAYS * 24) throw httpError(400, `The deadline must be within ${DEADLINE_MAX_DAYS} days`);
+    if (!catalogue.validIndustry(b.industry)) throw httpError(400, 'Choose the industry you run');
+    const serviceLabels = catalogue.validateServiceLabels(b.services);
     return {
+        industry: b.industry, serviceLabels,
         title, problem, needs, price, currency, region: b.region, timeZone,
         address, lat: coords.lat, lng: coords.lng, areaLabel, deadline,
     };
@@ -232,7 +236,42 @@ const STATUS_TEXT = {
     finished: 'has finished the work',
 };
 
+// Work modes a worker can take: on-site hospitality jobs, remote Bounty tasks, or both.
+const WORK_MODES = ['onsite', 'remote'];
+function validateWorkModes(modes) {
+    if (!Array.isArray(modes)) throw httpError(400, 'Choose on-site, remote or both');
+    const set = [...new Set(modes.map((m) => String(m)))];
+    if (set.length === 0 || set.some((m) => !WORK_MODES.includes(m))) throw httpError(400, 'Choose on-site, remote or both');
+    return WORK_MODES.filter((m) => set.includes(m));
+}
+
+// A clock time of day, HH:MM, 24-hour.
+function validateClock(text, label) {
+    const m = /^(\d{2}):(\d{2})$/.exec(String(text || ''));
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) throw httpError(400, `${label} must look like 09:00 (24-hour clock)`);
+    return Number(m[1]) * 60 + Number(m[2]);
+}
+
+// Minutes after midnight, on the clock of the zone, for an instant.
+function minutesOfDay(date, zone) {
+    const offset = zoneOffsetMinutes(zone, date);
+    const local = Math.floor(date.getTime() / 60000) + offset;
+    return ((local % 1440) + 1440) % 1440;
+}
+
+// True when a visit fits inside the hours a provider gave. Hours may run past midnight
+// (22:00 to 06:00). A visit that starts inside the hours and ends before they stop is inside.
+function visitFitsHours(startsAt, endsAt, zone, startHHMM, endHHMM) {
+    const from = validateClock(startHHMM, 'Start of hours');
+    const to = validateClock(endHHMM, 'End of hours');
+    const windowLen = ((to - from) + 1440) % 1440 || 1440;
+    const offsetStart = ((minutesOfDay(startsAt, zone) - from) + 1440) % 1440;
+    const duration = Math.round((endsAt.getTime() - startsAt.getTime()) / 60000);
+    return offsetStart + duration <= windowLen;
+}
+
 module.exports = {
+    WORK_MODES, validateWorkModes, validateClock, visitFitsHours,
     CATEGORY, STATUS_CODES, STATUS_TEXT, ADDRESS_LIKE,
     zoneOffsetMinutes, localToUtc, formatLocal,
     validateRequest, validateQuote, validateProviderArea, validateWindow, validateChatInput,

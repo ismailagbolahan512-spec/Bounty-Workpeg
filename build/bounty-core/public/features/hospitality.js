@@ -101,7 +101,7 @@
                 K().api('/api/services/requests'),
                 K().api('/api/services/appointments')
             ]).then(function(res) {
-                providerHome(res[0].area, res[1].requests || [], res[1].needs_area, res[2].appointments || []);
+                providerHome(res[0].area, res[1].requests || [], res[1].needs_area, res[2].appointments || [], res[1].work_mode_off);
             }).catch(function(error) { app().innerHTML = failed(error, 'Could not load services.'); });
         }
         app().innerHTML = shell('<div class="empty-state"><h3>Hospitality services</h3><p>This page is for business and provider accounts.</p></div>');
@@ -132,13 +132,15 @@
         );
     }
 
-    function providerHome(area, requests, needsArea, appointments) {
+    function providerHome(area, requests, needsArea, appointments, workModeOff) {
         var areaBlock = area
             ? '<div class="detail-section"><h2>Your service area</h2><p>' + esc(area.area_label) + ' · within ' + esc(area.radius_km) + ' km' +
               (area.willing_to_travel ? ' · willing to travel further' : '') + '</p>' +
               '<a class="btn btn-sm" href="#/services/new" data-change-area="1">Change area</a></div>'
             : '';
-        var list = needsArea
+        var list = workModeOff
+            ? '<div class="notice">You chose remote work only, so on-site requests are hidden. Change this on your profile to see them.</div>'
+            : needsArea
             ? '<div class="notice warning">Set your service area first. Only the area and distance band are shown to businesses, never your exact location.</div>'
             : (requests.length === 0
                 ? '<div class="empty-state"><h3>Nothing near you right now</h3><p>New requests inside your area appear here.</p></div>'
@@ -209,8 +211,8 @@
             return;
         }
         app().innerHTML = loading('Opening the request form…');
-        K().api('/api/global/regions').then(function(res) {
-            requestForm(res.regions || []);
+        Promise.all([K().api('/api/global/regions'), K().api('/api/services/catalogue'), K().api('/api/profile/me')]).then(function(res) {
+            requestForm(res[0].regions || [], res[1].industries || [], res[2].industry || '');
         }).catch(function(error) { app().innerHTML = failed(error, 'Could not open the form.'); });
     }
 
@@ -224,13 +226,30 @@
         return region.zones.map(function(z) { return '<option value="' + esc(z) + '">' + esc(z) + '</option>'; }).join('');
     }
 
-    function requestForm(regions) {
+    var MAX_SERVICES = 10;
+
+    function requestForm(regions, industries, currentIndustry) {
         var byCode = {};
         regions.forEach(function(r) { byCode[r.code] = r; });
+        var byKey = {};
+        industries.forEach(function(i) { byKey[i.key] = i; });
+        var picked = [];
+        var industry = byKey[currentIndustry] ? currentIndustry : '';
+
         app().innerHTML = shell(
             '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>Request a service</h1>' +
             '<p class="muted">Say what is wrong and what is needed, set a price, and drop the place on the map. The exact address is shared only with the provider you choose, after you both confirm.</p></div></div>' +
             '<form id="req-form" class="form-card form">' +
+            '<div class="field"><label for="req-industry">What industry do you run?</label>' +
+            '<select id="req-industry"><option value="">Choose your industry</option>' +
+            industries.map(function(i) { return '<option value="' + esc(i.key) + '"' + (i.key === industry ? ' selected' : '') + '>' + esc(i.label) + '</option>'; }).join('') +
+            '</select></div>' +
+            '<div class="field" id="req-services-block" hidden><span class="field-label">What services do you need? Tick what applies.</span>' +
+            '<div id="req-services" class="list-plain"></div>' +
+            '<label for="req-service-other">Not on the list? Type the service you need</label>' +
+            '<div class="form-row"><input id="req-service-other" maxlength="120" placeholder="For example, Fumigation of the kitchen">' +
+            '<button class="btn btn-sm" type="button" id="req-service-add">Add</button></div>' +
+            '<p class="small muted" id="req-service-count"></p></div>' +
             '<div class="field"><label for="req-title">Title</label><input id="req-title" maxlength="200" required placeholder="For example, Emergency clean linen before 2 PM"></div>' +
             '<div class="field"><label for="req-problem">What is wrong</label><textarea id="req-problem" rows="3" maxlength="2000" required placeholder="We are running low on clean bedsheets and towels."></textarea></div>' +
             '<div class="field"><label for="req-needs">What is needed</label><textarea id="req-needs" rows="3" maxlength="2000" required placeholder="Collect the dirty linen and deliver 40 sheets and 60 towels."></textarea></div>' +
@@ -252,6 +271,55 @@
         var point = null;
         var region = document.getElementById('req-region');
         var zone = document.getElementById('req-zone');
+        var industrySelect = document.getElementById('req-industry');
+        var servicesBox = document.getElementById('req-services');
+        var otherInput = document.getElementById('req-service-other');
+        var count = document.getElementById('req-service-count');
+
+        function drawServices() {
+            var block = document.getElementById('req-services-block');
+            block.hidden = !industry;
+            if (!industry) return;
+            var list = byKey[industry] ? byKey[industry].services : [];
+            var html = list.map(function(label) {
+                var on = picked.indexOf(label) !== -1;
+                return '<label class="card-row"><input type="checkbox" data-svc="' + esc(label) + '"' + (on ? ' checked' : '') + '> ' + esc(label) + '</label>';
+            }).join('');
+            var typed = picked.filter(function(label) { return list.indexOf(label) === -1; });
+            html += typed.map(function(label) {
+                return '<div class="card-row"><input type="checkbox" data-svc="' + esc(label) + '" checked> ' + esc(label) + ' <span class="small muted">(typed)</span></div>';
+            }).join('');
+            servicesBox.innerHTML = html;
+            count.textContent = picked.length + ' of ' + MAX_SERVICES + ' chosen';
+        }
+
+        industrySelect.addEventListener('change', function() {
+            industry = industrySelect.value;
+            picked = [];
+            drawServices();
+        });
+
+        servicesBox.addEventListener('change', function(e) {
+            var label = e.target.getAttribute('data-svc');
+            if (!label) return;
+            if (e.target.checked) {
+                if (picked.length >= MAX_SERVICES) { e.target.checked = false; return K().toast('Choose up to ' + MAX_SERVICES + ' services', 'warning'); }
+                if (picked.indexOf(label) === -1) picked.push(label);
+            } else {
+                picked = picked.filter(function(x) { return x !== label; });
+            }
+            drawServices();
+        });
+
+        document.getElementById('req-service-add').addEventListener('click', function() {
+            var text = otherInput.value.trim().replace(/\s+/g, ' ');
+            if (text.length < 2) return K().toast('Type the service you need', 'warning');
+            if (picked.length >= MAX_SERVICES) return K().toast('Choose up to ' + MAX_SERVICES + ' services', 'warning');
+            if (!picked.some(function(x) { return x.toLowerCase() === text.toLowerCase(); })) picked.push(text);
+            otherInput.value = '';
+            drawServices();
+        });
+
         function refreshRegion() {
             var r = byCode[region.value];
             document.getElementById('req-currency').textContent = 'Priced in ' + r.currency;
@@ -265,6 +333,7 @@
         }
         region.addEventListener('change', refreshRegion);
         refreshRegion();
+        drawServices();
 
         var picker = mapPicker(document.getElementById('req-map'), null, function(ll) {
             point = ll;
@@ -275,9 +344,13 @@
             e.preventDefault();
             var error = document.getElementById('req-error');
             error.hidden = true;
+            if (!industry) return setError(error, null, 'Choose the industry you run.');
+            if (picked.length === 0) return setError(error, null, 'Tick at least one service, or type the service you need.');
             if (!point) return setError(error, null, 'Drop the location on the map.');
             var r = byCode[region.value];
             var body = {
+                industry: industry,
+                services: picked,
                 title: document.getElementById('req-title').value,
                 problem: document.getElementById('req-problem').value,
                 needs: document.getElementById('req-needs').value,
@@ -324,7 +397,9 @@
                 : '<p class="small muted">Area: ' + esc(q.area_label) + ' · ' + esc(q.distance_band || '') + '. The exact address opens after both sides confirm.</p>');
         var header = '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>' + esc(q.title) + '</h1>' + facts + '</div></div>';
         var body = '<div class="detail-section"><h2>What is wrong</h2><p>' + when(q.problem) + '</p>' +
-            '<h2>What is needed</h2><p>' + when(q.needs) + '</p>' + placeBlock + '</div>';
+            '<h2>What is needed</h2><p>' + when(q.needs) + '</p>' +
+            (q.services && q.services.length ? '<p><strong>Services:</strong> ' + q.services.map(esc).join(', ') + '</p>' : '') +
+            placeBlock + '</div>';
 
         body += owner ? quotesBlock(q, quotes) : providerBlock(q, quotes);
         body += '<div id="appt-slot"></div>';
@@ -345,8 +420,10 @@
                     '<div class="field"><label for="we-' + esc(qt.id) + '">Visit ends (local time)</label><input id="we-' + esc(qt.id) + '" type="datetime-local" required></div>' +
                     '<p class="form-error" id="ae-' + esc(qt.id) + '" hidden></p>' +
                     '<div class="form-actions"><button class="btn btn-primary btn-sm" data-confirm-accept="' + esc(qt.id) + '">Choose this provider</button></div></div>';
+                var hrs = qt.provider_hours
+                    ? ' <span class="small muted">· available ' + esc(qt.provider_hours.from) + ' to ' + esc(qt.provider_hours.to) + ' (' + esc(qt.provider_hours.zone) + ')</span>' : '';
                 return '<li class="card-row"><strong>' + esc(qt.provider_name) + '</strong> · ' + money(qt.amount, q.currency) +
-                    ' <span class="small muted">' + esc(qt.status) + '</span>' + accept +
+                    ' <span class="small muted">' + esc(qt.status) + '</span>' + hrs + accept +
                     (qt.note ? '<p class="small">' + when(qt.note) + '</p>' : '') + acceptForm + '</li>';
             }).join('') + '</ul>';
         return '<div class="detail-section"><h2>Quotes</h2>' + rows + '</div>';
@@ -540,5 +617,90 @@
             K().go('services/' + found.bounty_id);
         }).catch(function(error) { app().innerHTML = failed(error, 'Could not open this visit.'); });
     }
+
+    // ------------------------------------------------------------------ after sign-in prompts
+    // Asked once per sign-in until answered: a business names its industry, a worker says what
+    // kind of work they take and when they are free. Both can be left for later.
+    function promptBox(id, title, intro, inner, onSave) {
+        if (document.getElementById(id)) return;
+        var box = document.createElement('div');
+        box.id = id;
+        box.setAttribute('role', 'dialog');
+        box.setAttribute('aria-modal', 'true');
+        box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:100;padding:16px';
+        box.innerHTML = '<div class="form-card form ux-modal-card"><h2 class="ux-mt0">' + esc(title) + '</h2>' +
+            '<p class="small muted">' + esc(intro) + '</p>' + inner +
+            '<p class="form-error" data-prompt-error hidden></p>' +
+            '<div class="ux-actions-end"><button class="btn" type="button" data-later>Later</button>' +
+            '<button class="btn btn-primary" type="button" data-save>Save</button></div></div>';
+        document.body.appendChild(box);
+        function close() { if (box.parentNode) box.parentNode.removeChild(box); }
+        box.querySelector('[data-later]').addEventListener('click', close);
+        box.querySelector('[data-save]').addEventListener('click', function() {
+            var button = box.querySelector('[data-save]');
+            var error = box.querySelector('[data-prompt-error]');
+            error.hidden = true;
+            var problem = onSave(box);
+            if (problem) { error.textContent = problem; error.hidden = false; return; }
+            button.disabled = true;
+            var body = box.__body;
+            K().api('/api/profile/me', { method: 'PATCH', body: body }).then(function() {
+                K().toast('Saved', 'success');
+                close();
+            }).catch(function(e) {
+                button.disabled = false;
+                error.textContent = K().friendlyApiError(e, 'Could not save.');
+                error.hidden = false;
+            });
+        });
+        return box;
+    }
+
+    function showIndustryPrompt() {
+        K().api('/api/services/catalogue').then(function(res) {
+            var options = res.industries.map(function(i) { return '<option value="' + esc(i.key) + '">' + esc(i.label) + '</option>'; }).join('');
+            var box = promptBox('industry-prompt', 'What industry do you run?',
+                'This shows the services you usually need, so posting a request takes a minute.',
+                '<div class="field"><label for="ip-industry">Industry</label><select id="ip-industry"><option value="">Choose one</option>' + options + '</select></div>',
+                function(b) {
+                    var v = b.querySelector('#ip-industry').value;
+                    if (!v) return 'Choose the industry you run.';
+                    b.__body = { industry: v };
+                    return '';
+                });
+        }).catch(function() {});
+    }
+
+    function showAvailabilityPrompt() {
+        var zone = '';
+        try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { zone = ''; }
+        promptBox('availability-prompt', 'Where do you work, and when are you free?',
+            'Tell us the kind of work you take and the hours you are free. Your hours are in your own time zone.',
+            '<div class="field"><span class="field-label">Kind of work</span>' +
+            '<label class="card-row"><input type="checkbox" id="ap-onsite"> On-site jobs</label>' +
+            '<label class="card-row"><input type="checkbox" id="ap-remote"> Remote jobs</label></div>' +
+            '<div class="field"><label for="ap-from">Available from</label><input id="ap-from" type="time" value="09:00"></div>' +
+            '<div class="field"><label for="ap-to">Available until</label><input id="ap-to" type="time" value="17:00"></div>' +
+            '<div class="field"><label for="ap-zone">Your time zone</label><input id="ap-zone" maxlength="64" value="' + esc(zone) + '" placeholder="For example, Africa/Lagos"></div>',
+            function(b) {
+                var modes = [];
+                if (b.querySelector('#ap-onsite').checked) modes.push('onsite');
+                if (b.querySelector('#ap-remote').checked) modes.push('remote');
+                if (modes.length === 0) return 'Choose on-site, remote, or both.';
+                var from = b.querySelector('#ap-from').value;
+                var to = b.querySelector('#ap-to').value;
+                if (!from || !to) return 'Give the start and end of your hours.';
+                var z = b.querySelector('#ap-zone').value.trim();
+                if (!z) return 'Give your time zone.';
+                b.__body = { work_modes: modes, available_start: from, available_end: to, timezone: z };
+                return '';
+            });
+    }
+
+    F.afterSignIn = function(me) {
+        if (!me || !K().isAuthenticated()) return;
+        if (me.role === 'business' && !me.industry) return showIndustryPrompt();
+        if (me.role === 'worker' && (!me.work_modes || me.work_modes.length === 0)) return showAvailabilityPrompt();
+    };
 
 })();

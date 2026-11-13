@@ -27,6 +27,7 @@ const { assertActiveAccount, requireAgreement, logAudit } = require('../services
 const { createNotification } = require('./notifications');
 const hs = require('../services/hospitality');
 const loc = require('../services/location');
+const catalogue = require('../services/hospitality-catalogue');
 
 const router = express.Router();
 router.use(authenticate);
@@ -72,12 +73,18 @@ function ownerView(r) {
         region_code: r.region_code || null, time_zone: r.time_zone || null,
         local_deadline: hs.formatLocal(deadlineDate(r), r.time_zone || 'UTC'),
         pending_quotes: r.pending_quotes === undefined ? undefined : Number(r.pending_quotes),
+        industry: r.industry || null, services: r.services || [],
     };
 }
 
 function distanceFrom(area, point) {
     return loc.haversineKm({ lat: Number(area.lat), lng: Number(area.lng) }, { lat: Number(point.lat), lng: Number(point.lng) });
 }
+
+// The industries and the services each usually needs, for the request form.
+router.get('/catalogue', (req, res) => {
+    res.json({ industries: catalogue.INDUSTRIES, max_services: catalogue.MAX_SERVICES });
+});
 
 // ------------------------------------------------------------------ provider area
 
@@ -120,11 +127,12 @@ router.post('/requests', requireRole('business'), async(req, res, next) => {
             const { rows } = await client.query(
                 `INSERT INTO bounties
                    (business_id, title, description, category, difficulty, reward_amount, deadline, submission_type,
-                    requirements, status, created_at, updated_at, currency, task_mode, area_label, approx_lat, approx_lng)
-                 VALUES ($1, $2, $3, $4, 'easy', $5, $6, 'text', $7, 'open', NOW(), NOW(), $8, 'onsite', $9, $10, $11)
+                    requirements, status, created_at, updated_at, currency, task_mode, area_label, approx_lat, approx_lng,
+                    service_industry, service_labels)
+                 VALUES ($1, $2, $3, $4, 'easy', $5, $6, 'text', $7, 'open', NOW(), NOW(), $8, 'onsite', $9, $10, $11, $12, $13)
                  RETURNING id`,
                 [req.user.id, r.title, r.problem, hs.CATEGORY, r.price, r.deadline.toISOString(), r.needs,
-                    r.currency, r.areaLabel, loc.roundPublic(r.lat), loc.roundPublic(r.lng)]
+                    r.currency, r.areaLabel, loc.roundPublic(r.lat), loc.roundPublic(r.lng), r.industry, r.serviceLabels]
             );
             const id = rows[0].id;
             await client.query(
@@ -152,7 +160,7 @@ router.post('/requests', requireRole('business'), async(req, res, next) => {
 async function listMine(req, res) {
     const { rows } = await pool.query(
         `SELECT b.id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
-                b.currency, b.area_label, b.status, ${DEADLINE_MS},
+                b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_industry AS industry, b.service_labels AS services,
                 sl.address_text AS address, sl.lat, sl.lng, sl.region_code, sl.time_zone,
                 (SELECT COUNT(*) FROM quotations q WHERE q.bounty_id = b.id AND q.status = 'pending')::int AS pending_quotes
          FROM bounties b
@@ -172,10 +180,16 @@ async function listForProvider(req, res) {
     if (areaRows.length === 0) {
         return res.json({ requests: [], needs_area: true });
     }
+    const { rows: me } = await pool.query('SELECT work_modes FROM users WHERE id = $1', [req.user.id]);
+    const modes = (me[0] && me[0].work_modes) || [];
+    // Workers who only take remote work do not see on-site requests. Empty means not answered yet.
+    if (modes.length > 0 && !modes.includes('onsite')) {
+        return res.json({ requests: [], needs_area: false, work_mode_off: true });
+    }
     const area = areaRows[0];
     const { rows } = await pool.query(
         `SELECT b.id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
-                b.currency, b.area_label, b.status, ${DEADLINE_MS},
+                b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_labels AS services,
                 sl.lat, sl.lng, sl.region_code, sl.time_zone
          FROM bounties b
          JOIN service_locations sl ON sl.bounty_id = b.id
@@ -196,6 +210,7 @@ async function listForProvider(req, res) {
         visible.push({
             id: r.id, title: r.title, problem: r.problem, needs: r.needs, price: Number(r.price),
             currency: r.currency, area_label: r.area_label, status: r.status,
+            services: r.services || [],
             distance_band: hs.publicDistance(distanceKm),
             region_code: r.region_code,
             local_deadline: hs.formatLocal(deadlineDate(r), r.time_zone),
@@ -232,7 +247,7 @@ router.get('/requests/:id', async(req, res, next) => {
     try {
         const { rows } = await pool.query(
             `SELECT b.id, b.business_id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
-                    b.currency, b.area_label, b.status, ${DEADLINE_MS},
+                    b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_industry AS industry, b.service_labels AS services,
                     sl.address_text, sl.lat, sl.lng, sl.region_code, sl.time_zone
              FROM bounties b LEFT JOIN service_locations sl ON sl.bounty_id = b.id
              WHERE b.id = $1 AND b.task_mode = 'onsite' AND b.category = $2`, [req.params.id, hs.CATEGORY]
@@ -350,12 +365,19 @@ router.get('/requests/:id/quotes', async(req, res, next) => {
         if (owner.length === 0) throw httpError(404, 'Request not found');
         const isOwner = String(owner[0].business_id) === String(req.user.id);
         const { rows } = await pool.query(
-            `SELECT q.id, q.amount, q.note, q.status, q.created_at, q.provider_id, u.name AS provider_name
+            `SELECT q.id, q.amount, q.note, q.status, q.created_at, q.provider_id, u.name AS provider_name,
+                    u.timezone, to_char(u.available_start, 'HH24:MI') AS available_start, to_char(u.available_end, 'HH24:MI') AS available_end
              FROM quotations q JOIN users u ON u.id = q.provider_id
              WHERE q.bounty_id = $1 AND ($2::boolean OR q.provider_id = $3)
              ORDER BY q.created_at ASC`, [req.params.id, isOwner, req.user.id]
         );
-        res.json({ quotes: rows.map((r) => ({ ...r, amount: Number(r.amount) })) });
+        // The hours a provider gave are shown to the business that is choosing, never to others.
+        res.json({ quotes: rows.map((r) => {
+            const hours = r.available_start && r.available_end && r.timezone
+                ? { from: r.available_start, to: r.available_end, zone: r.timezone } : null;
+            const { timezone, available_start, available_end, ...rest } = r;
+            return { ...rest, amount: Number(r.amount), provider_hours: isOwner ? hours : undefined };
+        }) });
     } catch (err) { next(err); }
 });
 
@@ -381,6 +403,16 @@ router.post('/quotes/:id/accept', requireRole('business'), async(req, res, next)
             if (quote.bounty_status !== 'open') throw httpError(409, 'This request is no longer open');
 
             const window = hs.validateWindow(body.starts_local, body.ends_local, quote.time_zone, deadlineDate(quote));
+            const { rows: hoursRows } = await client.query(
+                `SELECT timezone, to_char(available_start, 'HH24:MI') AS available_start, to_char(available_end, 'HH24:MI') AS available_end
+                 FROM users WHERE id = $1`, [quote.provider_id]
+            );
+            const h = hoursRows[0] || {};
+            if (h.timezone && h.available_start && h.available_end) {
+                if (!hs.visitFitsHours(window.starts, window.ends, h.timezone, h.available_start, h.available_end)) {
+                    throw httpError(409, `This provider is available ${h.available_start} to ${h.available_end} (${h.timezone}). Choose a visit inside those hours.`);
+                }
+            }
 
             await client.query(`UPDATE quotations SET status = 'accepted', updated_at = NOW() WHERE id = $1`, [quote.id]);
             await client.query(

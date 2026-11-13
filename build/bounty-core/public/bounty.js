@@ -462,6 +462,7 @@
                 syncVerified(me);
                 // Onboarding waits until the email is confirmed, so the two prompts never overlap.
         if (getRole() === 'worker' && me.onboarding_done === false) showOnboarding(me);
+                else if (window.BountyFeatures && window.BountyFeatures.afterSignIn) window.BountyFeatures.afterSignIn(me);
             })
             .catch(function() {});
     }
@@ -486,6 +487,8 @@
 
         function close() {
             if (box.parentNode) box.parentNode.removeChild(box);
+            // The availability question follows the profile questions.
+            if (window.BountyFeatures && window.BountyFeatures.afterSignIn) window.BountyFeatures.afterSignIn(state.profile || me);
         }
 
         on($('#ob-skip', box), 'click', function() {

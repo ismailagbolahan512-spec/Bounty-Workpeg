@@ -6,6 +6,8 @@ const { publicPortfolio } = require('../services/portfolio');
 const { workerReputation } = require('./reputation');
 const { validTimezone } = require('../services/matching');
 const { isCountry } = require('../services/regions');
+const hs = require('../services/hospitality');
+const catalogue = require('../services/hospitality-catalogue');
 
 const CATEGORIES = ['dev', 'design', 'content', 'marketing', 'other'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -13,6 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SELECT_ME = `SELECT id, email, name, role, bio, avatar_url, categories, skills, website, location,
   onboarding_done, total_earned, reputation_score,
   timezone, languages, weekly_hours, to_char(available_from, 'YYYY-MM-DD') AS available_from, discoverable, country,
+  industry, work_modes, to_char(available_start, 'HH24:MI') AS available_start, to_char(available_end, 'HH24:MI') AS available_end,
   is_admin
   FROM users WHERE id = $1`;
 
@@ -37,6 +40,10 @@ function publicUser(row) {
     available_from: row.available_from || null,
     discoverable: row.discoverable === true,
     country: row.country ? String(row.country).trim() : null,
+    industry: row.industry || null,
+    work_modes: row.work_modes || [],
+    available_start: row.available_start || null,
+    available_end: row.available_end || null,
     is_admin: row.is_admin === true
   };
 }
@@ -162,6 +169,34 @@ router.patch('/me', authenticate, async (req, res, next) => {
       const code = body.country === null || body.country === '' ? null : String(body.country).trim().toUpperCase();
       if (code && !isCountry(code)) throw httpError(400, 'Choose a country from the list');
       add('country', code);
+    }
+    if (body.industry !== undefined) {
+      if (body.industry === null || body.industry === '') {
+        add('industry', null);
+      } else {
+        if (!catalogue.validIndustry(body.industry)) throw httpError(400, 'Choose the industry you run from the list');
+        add('industry', body.industry);
+      }
+    }
+    if (body.work_modes !== undefined) {
+      add('work_modes', body.work_modes === null ? [] : hs.validateWorkModes(body.work_modes));
+    }
+    if (body.available_start !== undefined || body.available_end !== undefined) {
+      // Both ends together, or neither. Clearing both removes the hours.
+      const start = body.available_start;
+      const end = body.available_end;
+      if ((start === null || start === '' || start === undefined) !== (end === null || end === '' || end === undefined)) {
+        throw httpError(400, 'Give both the start and the end of your hours, or clear both');
+      }
+      if (start === null || start === '' || start === undefined) {
+        add('available_start', null);
+        add('available_end', null);
+      } else {
+        hs.validateClock(start, 'Start of hours');
+        hs.validateClock(end, 'End of hours');
+        add('available_start', String(start));
+        add('available_end', String(end));
+      }
     }
     if (body.onboarding_done !== undefined) add('onboarding_done', body.onboarding_done === true);
 

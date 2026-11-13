@@ -95,7 +95,17 @@ async function main() {
         lng: 3.4219,
         area_label: 'Victoria Island',
         deadline: lagosLocal(2, 14, 0),
+        industry: 'hotel',
+        services: ['Linen laundry and change', 'Pest control'],
     };
+    const noIndustry = await api('POST', '/api/services/requests', { ...requestBody, industry: undefined }, hotel.token);
+    check('a request without an industry is refused', noIndustry.status === 400, noIndustry.body);
+    const noServices = await api('POST', '/api/services/requests', { ...requestBody, services: [] }, hotel.token);
+    check('a request with no services ticked or typed is refused', noServices.status === 400, noServices.body);
+    const badIndustry = await api('POST', '/api/services/requests', { ...requestBody, industry: 'space_station' }, hotel.token);
+    check('an industry that is not on the list is refused', badIndustry.status === 400, badIndustry.body);
+    const catalogue = await api('GET', '/api/services/catalogue', null, hotel.token);
+    check('the catalogue lists industries with services', catalogue.status === 200 && catalogue.body.industries.length >= 5, catalogue.body);
     const posted = await api('POST', '/api/services/requests', requestBody, hotel.token);
     check('the hotel posts a request with a price and a location', posted.status === 201, posted.body);
     check('the request is priced in naira and runs on Lagos time', posted.body.currency === 'NGN' && posted.body.time_zone === 'Africa/Lagos', posted.body);
@@ -130,6 +140,12 @@ async function main() {
     check('the general bounty board does not show onsite services',
         !(boardLinks.body.bounties || []).some((b) => b.id === requestId), boardLinks.status);
 
+    const remoteOnly = await api('PATCH', '/api/profile/me', { work_modes: ['remote'] }, second.token);
+    check('a worker can choose remote work only', remoteOnly.status === 200 && remoteOnly.body.work_mode_off === undefined, remoteOnly.body);
+    const secondNear = await api('GET', '/api/services/requests', null, second.token);
+    check('a remote-only worker sees no on-site requests', secondNear.status === 200 && secondNear.body.work_mode_off === true && secondNear.body.requests.length === 0, secondNear.body);
+    await api('PATCH', '/api/profile/me', { work_modes: ['onsite'] }, second.token);
+
     const notQuoted = await api('GET', `/api/services/requests/${requestId}`, null, near.token);
     check('a provider who has not quoted cannot open the request', notQuoted.status === 404, notQuoted.body);
 
@@ -153,6 +169,20 @@ async function main() {
 
     const hotelView = await api('GET', `/api/services/requests/${requestId}`, null, hotel.token);
     check('the hotel sees the exact address on its own request', hotelView.body.request.address === requestBody.address, hotelView.body);
+
+    // -------------------------------------------------------------- provider hours
+    const nearHours = await api('PATCH', '/api/profile/me', {
+        work_modes: ['onsite'], available_start: '08:00', available_end: '18:00', timezone: 'Africa/Lagos',
+    }, near.token);
+    check('a worker saves on-site work and hours', nearHours.status === 200 && nearHours.body.available_start === '08:00', nearHours.body);
+    const badHours = await api('PATCH', '/api/profile/me', { available_start: '08:00' }, near.token);
+    check('hours need both a start and an end', badHours.status === 400, badHours.body);
+    const outsideHours = await api('POST', `/api/services/quotes/${quoteId}/accept`,
+        { starts_local: lagosLocal(1, 17, 0), ends_local: lagosLocal(1, 19, 0) }, hotel.token);
+    check('a visit that runs past the provider hours is refused', outsideHours.status === 409, outsideHours.body);
+    const quotedHours = await api('GET', `/api/services/requests/${requestId}/quotes`, null, hotel.token);
+    const nearRow = quotedHours.body.quotes.find((q) => q.id === quoteId);
+    check('the business sees the provider hours on the quote', nearRow && nearRow.provider_hours && nearRow.provider_hours.from === '08:00', quotedHours.body);
 
     // -------------------------------------------------------------- accept
     const window = { starts_local: lagosLocal(1, 9, 0), ends_local: lagosLocal(1, 12, 0) };

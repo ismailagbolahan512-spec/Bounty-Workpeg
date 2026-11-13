@@ -42,6 +42,8 @@ const goodRequest = {
     lng: 3.4219,
     area_label: 'Victoria Island',
     deadline: '2026-11-14T14:00',
+    industry: 'hotel',
+    services: ['Linen laundry and change'],
 };
 
 test('a good request is accepted, priced in the region currency, on the region zone', () => {
@@ -184,3 +186,47 @@ test('currency and region helpers agree with the region table', () => {
     assert.throws(() => regions.validateTaskCurrency('ngn', []), /three-letter/);
     assert.throws(() => regions.validateTaskCurrency('XYZ', []), /not supported/);
 });
+
+test('the industry catalogue lists services, and a typed service is accepted with a catalogue one', () => {
+    const cat = require('../services/hospitality-catalogue');
+    assert.equal(cat.validIndustry('hotel'), true);
+    assert.equal(cat.validIndustry('space_station'), false);
+    assert.equal(cat.industryFor('other').services.length, 0);
+    const labels = cat.validateServiceLabels(['Pest control', '  Fumigate the kitchen  ', 'pest CONTROL']);
+    assert.deepEqual(labels, ['Pest control', 'Fumigate the kitchen']);
+    assert.throws(() => cat.validateServiceLabels([]), /at least one/);
+    assert.throws(() => cat.validateServiceLabels(['x']), /2 to 120/);
+    assert.throws(() => cat.validateServiceLabels(Array.from({ length: 11 }, (_, i) => 'Service ' + i)), /up to 10/);
+});
+
+test('a request must name an industry and at least one service', () => {
+    assert.throws(() => hs.validateRequest({ ...goodRequest, industry: undefined }, NOW), /industry/);
+    assert.throws(() => hs.validateRequest({ ...goodRequest, services: [] }, NOW), /at least one/);
+    assert.equal(hs.validateRequest(goodRequest, NOW).serviceLabels[0], 'Linen laundry and change');
+});
+
+test('a worker chooses on-site, remote or both, and at least one', () => {
+    assert.deepEqual(hs.validateWorkModes(['remote', 'onsite']), ['onsite', 'remote']);
+    assert.deepEqual(hs.validateWorkModes(['onsite']), ['onsite']);
+    assert.throws(() => hs.validateWorkModes([]), /on-site, remote or both/);
+    assert.throws(() => hs.validateWorkModes(['flying']), /on-site, remote or both/);
+    assert.throws(() => hs.validateWorkModes('onsite'), /on-site, remote or both/);
+});
+
+test('hours must look like 09:00', () => {
+    assert.equal(hs.validateClock('09:30', 'Start'), 570);
+    assert.throws(() => hs.validateClock('9am', 'Start'), /24-hour/);
+    assert.throws(() => hs.validateClock('25:00', 'Start'), /24-hour/);
+});
+
+test('a visit must fit inside the hours a provider gave, in the provider time zone', () => {
+    // 09:00 to 12:00 Lagos, inside 08:00 to 18:00
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T08:00:00Z'), new Date('2026-11-14T11:00:00Z'), 'Africa/Lagos', '08:00', '18:00'), true);
+    // 17:00 to 19:00 Lagos runs past 18:00
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T16:00:00Z'), new Date('2026-11-14T18:00:00Z'), 'Africa/Lagos', '08:00', '18:00'), false);
+    // hours that run past midnight: 22:00 to 06:00 Lagos; a visit at 23:00 for 2 hours fits
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T22:00:00Z'), new Date('2026-11-15T00:00:00Z'), 'Africa/Lagos', '22:00', '06:00'), true);
+    // a visit starting at 05:30 for an hour runs past 06:00
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T04:30:00Z'), new Date('2026-11-14T05:30:00Z'), 'Africa/Lagos', '22:00', '06:00'), false);
+});
+
