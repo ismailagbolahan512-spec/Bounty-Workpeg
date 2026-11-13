@@ -79,6 +79,8 @@ app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/protection', require('./routes/protection'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/integration-tokens', require('./routes/integration-tokens'));
+app.use('/api/peg', require('./routes/peg'));
 
 app.use(express.static(require('path').join(__dirname, 'public')));
 

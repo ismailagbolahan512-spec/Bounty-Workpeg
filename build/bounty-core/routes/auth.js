@@ -21,6 +21,7 @@ const { signToken, setSessionCookie, clearSessionCookie, verifyToken, readSessio
 const { sendEmail, appUrl } = require('../services/email');
 const { createAuthToken, consumeAuthToken } = require('../services/tokens');
 const { lockedSeconds, recordFailure, clearFailures } = require('../middleware/signin-limit');
+const { revokeAllForUser } = require('../services/integration-tokens');
 
 const router = express.Router();
 
@@ -64,6 +65,8 @@ router.post('/logout', async(req, res, next) => {
             try {
                 const payload = verifyToken(token);
                 await pool.query('UPDATE users SET tokens_valid_after = $2 WHERE id = $1', [payload.sub, new Date()]);
+                // Logging out also ends the user's Workpeg links (design section 3.5).
+                await revokeAllForUser(payload.sub, 'logout');
             } catch {
                 // An expired or invalid token has nothing to revoke.
             }

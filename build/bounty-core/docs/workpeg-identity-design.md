@@ -106,10 +106,13 @@ Never granted to a Workpeg token, whatever the user asks for:
 | 1 | Renumber showcase and file-jobs migrations 020 and 021 to 022 and 023 | file rename | approved; done on branch |
 | 2 | Add `integration_tokens` table | additive schema | yes |
 | 3 | Add `integration_confirmations` table | additive schema | yes |
-| 4 | `authenticateIntegration` middleware; `authenticate` rejects `bnt_wp_` tokens | code, `middleware/auth.js` | after design approval |
-| 5 | `requireScope` and `routes/peg.js` mounted at `/api/peg` | code | after design approval |
-| 6 | Settings UI to issue, list, rotate and revoke tokens; confirmation screen | frontend | after design approval |
-| 7 | Audit events for issue, use, revoke, confirm | code | after design approval |
+| 4 | `authenticateIntegration` middleware; `authenticate` rejects `bnt_wp_` tokens | code, `middleware/auth.js` | built; tested |
+| 5 | `requireScope` and `routes/peg.js` mounted at `/api/peg` | code | built; tested (`/me`, `/bounties`, `/confirmations`) |
+| 6 | Settings UI to issue, list, rotate and revoke tokens; confirmation screen | frontend | not built |
+| 7 | Audit events for issue, rotate, revoke, approve, confirmation request | code | built for the token and confirmation routes; tested through the routes |
+| 8 | Migration 026: confirmed action and payload cannot change after request; approved fields locked; rows cannot be deleted | additive schema | approved as part of the "approval tied to exact action and payload" requirement; built and tested locally |
+
+Approval binding (added 2026-11-13): the approval hash covers the action and the payload together (`confirmationHash`). Migration 026 stops any change to the token, action, hash or expiry, and stops a second approval or use. Approval is shown to the user in Bounty before it is given; that screen is item 6 and is not built yet.
 
 ## 5. Tests required before any claim that it works
 

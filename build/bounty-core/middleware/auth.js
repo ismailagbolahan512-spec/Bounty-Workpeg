@@ -2,6 +2,7 @@
 // Requires env vars: JWT_SECRET
 const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
+const integration = require('../services/integration-tokens');
 
 const TOKEN_TTL = '7d';
 const TOKEN_ISSUER = 'bounty-api';
@@ -87,6 +88,11 @@ async function authenticate(req, res, next) {
         if (!token) {
             throw httpError(401, 'Missing or malformed Authorization header');
         }
+        // Workpeg tokens are scoped and only accepted on /api/peg (see authenticateIntegration).
+        // They are never a session, so they cannot reach an ordinary route.
+        if (token.startsWith(integration.TOKEN_PREFIX)) {
+            throw httpError(401, 'Integration tokens are only accepted on integration routes');
+        }
 
         // A cookie is sent by the browser automatically, so a request from another site could
         // ride on it. Browsers always send Origin on writes; reject writes from any other origin.
@@ -155,4 +161,58 @@ function readSessionToken(req) {
     return readCookie(req.headers.cookie, SESSION_COOKIE);
 }
 
-module.exports = { authenticate, requireRole, requireAdmin, signToken, setSessionCookie, clearSessionCookie, verifyToken, readSessionToken, httpError, SESSION_COOKIE };
+// Integration authentication (Workpeg). Bearer only, never a cookie. The token is checked on
+// every request: unknown, revoked and expired tokens are refused, and so is a token whose owner
+// has changed password since it was issued, or whose account is not active. Role and status
+// come from the database each time, so a role change or suspension applies at once.
+async function authenticateIntegration(req, res, next) {
+    try {
+        const [scheme, bearer] = (req.headers.authorization || '').split(' ');
+        if (scheme !== 'Bearer' || !bearer || !bearer.startsWith(integration.TOKEN_PREFIX)) {
+            throw httpError(401, 'Missing integration token');
+        }
+        const row = await integration.loadActiveToken(bearer);
+        if (!row) {
+            throw httpError(401, 'Integration token is invalid, expired or revoked');
+        }
+        if (row.password_changed_at && new Date(row.password_changed_at) > new Date(row.issued_at)) {
+            throw httpError(401, 'Your password was changed. Link Bounty again to continue.');
+        }
+        if (row.account_status !== 'active') {
+            throw httpError(403, 'This account cannot use integrations right now.');
+        }
+        if (row.is_admin === true || row.role === 'admin') {
+            throw httpError(403, 'Admins cannot use integrations.');
+        }
+        // Recorded for the owner's settings page. Not awaited: a failed write must not block the call.
+        pool.query('UPDATE integration_tokens SET last_used_at = NOW() WHERE id = $1', [row.id]).catch(() => {});
+        req.integration = { tokenId: row.id, scopes: row.scopes };
+        req.user = {
+            id: row.user_id, email: row.email, name: row.name, role: row.role,
+            is_admin: row.is_admin, account_status: row.account_status,
+        };
+        next();
+    } catch (err) {
+        next(err);
+    }
+}
+
+// Scope gate for integration routes. A scope must be on the token AND allowed for the owner's
+// current role. The token body can never widen what the role permits.
+function requireScope(scope) {
+    return (req, res, next) => {
+        if (!req.integration) return next(httpError(401, 'Missing integration token'));
+        if (!req.integration.scopes.includes(scope)) {
+            return next(httpError(403, `This token does not allow ${scope}`));
+        }
+        if (!integration.roleAllows(req.user.role, scope)) {
+            return next(httpError(403, `Your role cannot use ${scope}`));
+        }
+        next();
+    };
+}
+
+module.exports = {
+    authenticate, authenticateIntegration, requireScope, requireRole, requireAdmin, signToken,
+    setSessionCookie, clearSessionCookie, verifyToken, readSessionToken, httpError, SESSION_COOKIE,
+};
