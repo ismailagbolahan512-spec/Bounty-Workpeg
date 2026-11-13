@@ -29,6 +29,20 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ROLES = ['worker', 'business'];
 const BCRYPT_ROUNDS = 12;
 const GENERIC_FORGOT = 'If an account exists for that email, a reset link has been sent.';
+// EMAIL_VERIFICATION=off treats accounts as verified without sending email (for example while
+// no email provider is set up). The verification feature stays in place and is on by default.
+// Every check that requires a verified email still applies; this only marks accounts verified.
+const VERIFY_EMAIL = process.env.EMAIL_VERIFICATION !== 'off';
+if (!VERIFY_EMAIL) console.warn('⚠ EMAIL_VERIFICATION=off: new and signing-in accounts are treated as verified. No email is sent.');
+
+// Marks an account verified when verification is switched off. Used at sign-up and sign-in.
+async function autoVerifyIfDisabled(userId) {
+    if (VERIFY_EMAIL) return;
+    await pool.query(
+        `UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW()
+         WHERE id = $1`, [userId]
+    );
+}
 
 function publicUser(u) {
     return { id: u.id, email: u.email, name: u.name, role: u.role, email_verified: !!u.email_verified, is_admin: u.is_admin === true };
@@ -111,14 +125,18 @@ router.post('/signup', async(req, res, next) => {
             throw err;
         }
 
-        // Best effort: a mail failure must not block signup. The user can resend from the app.
-        sendVerificationEmail(user.id, user.email).catch((err) => {
-            console.error('✗ Verification email failed:', err.message);
-        });
+        if (VERIFY_EMAIL) {
+            // Best effort: a mail failure must not block signup. The user can resend from the app.
+            sendVerificationEmail(user.id, user.email).catch((err) => {
+                console.error('✗ Verification email failed:', err.message);
+            });
+        } else {
+            await autoVerifyIfDisabled(user.id);
+        }
 
         const token = signToken(user);
         setSessionCookie(res, token);
-        res.status(201).json({...publicUser({...user, email_verified: false }), token });
+        res.status(201).json({...publicUser({...user, email_verified: !VERIFY_EMAIL }), token });
     } catch (err) {
         next(err);
     }
@@ -159,6 +177,12 @@ router.post('/signin', async(req, res, next) => {
         }
         clearFailures(email, req.ip);
 
+        // Accounts created before verification was switched off are verified on their next sign-in.
+        if (!VERIFY_EMAIL) {
+            await autoVerifyIfDisabled(rows[0].id);
+            rows[0].email_verified = true;
+        }
+
         const token = signToken(rows[0]);
         setSessionCookie(res, token);
         res.json({...publicUser(rows[0]), token });
@@ -186,7 +210,7 @@ router.post('/verify', async(req, res, next) => {
 // ------------------------------------------ POST /resend-verification
 router.post('/resend-verification', authenticate, async(req, res, next) => {
     try {
-        if (req.user.email_verified_at) {
+        if (req.user.email_verified_at || !VERIFY_EMAIL) {
             return res.json({ ok: true, already_verified: true });
         }
         // Here a failure is shown to the user, so they know the email did not go out.
