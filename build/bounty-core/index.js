@@ -47,6 +47,8 @@ app.use('/api/payments/pandascrow/webhook', require('./routes/payments-webhook')
 
 app.use(express.json({ limit: '100kb' }));
 
+// The Workpeg peg's browser calls /api/peg from another origin. Only that path gets CORS headers.
+app.use(require('./middleware/peg-cors').pegCors());
 app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 300 }));
 // Many users share one IP on mobile networks, so these limits are generous.
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: Number(process.env.AUTH_IP_LIMIT) || 300, message: 'Too many attempts. Try again in 15 minutes.' }));
