@@ -154,3 +154,25 @@ class SubmissionStatusTag(Component):
             return Tag("Rejected", tone="neutral", dot=True)
         else:
             return Tag("Pending", tone="info", dot=True)
+
+
+class AppointmentStatusTag(Component):
+    """An appointment's status as a labelled, toned Tag.
+
+    Tag(tone=) takes a literal, so each status is its own branch.
+    """
+
+    def __init__(self, status):
+        self.status = status
+
+    def build(self):
+        if self.status == "confirmed":
+            return Tag("Confirmed", tone="success", dot=True)
+        elif self.status == "proposed":
+            return Tag("Awaiting confirmation", tone="info", dot=True)
+        elif self.status == "cancelled":
+            return Tag("Cancelled", tone="neutral", dot=True)
+        elif self.status == "superseded":
+            return Tag("Rescheduled", tone="neutral", dot=True)
+        else:
+            return Tag(self.status, tone="neutral", dot=True)

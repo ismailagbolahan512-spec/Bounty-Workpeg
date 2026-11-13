@@ -21,6 +21,10 @@ const SCOPE_ROLES = {
     'applications:write': ['worker'],
     'submissions:write': ['worker'],
     'workspace:read': ['worker', 'business'],
+    // Hospitality services — business-only. The peg on Workpeg reads a business's own
+    // requests, quotes and appointments. No writes yet; sensitive writes will be added
+    // under the confirmation flow once we are ready to post requests from the peg.
+    'services:read': ['business'],
 };
 // Scopes that run only with the user's explicit approval in Bounty (design section 3.4).
 const SENSITIVE_SCOPES = ['bounties:publish', 'applications:write', 'submissions:write'];
