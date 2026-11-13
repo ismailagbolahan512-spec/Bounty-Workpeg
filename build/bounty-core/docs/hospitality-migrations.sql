@@ -1,5 +1,5 @@
--- 027-task-mode-and-area.sql (DRAFT, revised 2026-11-13)
--- Additive. Remote tasks need no location. Public area fields are approximate (two decimals).
+-- 027-task-mode-and-area.sql (DRAFT, revised 2026-11-13: no coordinates)
+-- Additive. Remote tasks need no location. On-site tasks need an area label.
 -- Currency: every task has one. Existing rows get NGN, the currency rewards have always used.
 ALTER TABLE bounties ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'NGN';
 ALTER TABLE bounties DROP CONSTRAINT IF EXISTS bounties_currency_check;
@@ -8,50 +8,37 @@ ALTER TABLE bounties ADD CONSTRAINT bounties_currency_check
 
 ALTER TABLE bounties ADD COLUMN IF NOT EXISTS task_mode VARCHAR(10) NOT NULL DEFAULT 'remote';
 ALTER TABLE bounties ADD COLUMN IF NOT EXISTS area_label VARCHAR(120);
-ALTER TABLE bounties ADD COLUMN IF NOT EXISTS approx_lat NUMERIC(6,2);
-ALTER TABLE bounties ADD COLUMN IF NOT EXISTS approx_lng NUMERIC(6,2);
 
 ALTER TABLE bounties DROP CONSTRAINT IF EXISTS bounties_task_mode_check;
 ALTER TABLE bounties ADD CONSTRAINT bounties_task_mode_check
   CHECK (task_mode IN ('remote', 'onsite'));
 
+-- On-site tasks must say which area they are in. The pin was dropped; the business types
+-- the address, and providers decide from the area label if they can reach.
 ALTER TABLE bounties DROP CONSTRAINT IF EXISTS bounties_onsite_area_check;
 ALTER TABLE bounties ADD CONSTRAINT bounties_onsite_area_check
   CHECK (task_mode = 'remote' OR (
-    area_label IS NOT NULL AND char_length(area_label) BETWEEN 1 AND 120
-    AND approx_lat BETWEEN -90 AND 90 AND approx_lng BETWEEN -180 AND 180));
+    area_label IS NOT NULL AND char_length(area_label) BETWEEN 1 AND 120));
 
 CREATE INDEX IF NOT EXISTS idx_bounties_onsite_open
-  ON bounties (approx_lat, approx_lng) WHERE task_mode = 'onsite' AND status = 'open';
--- 028-provider-service-areas.sql (DRAFT)
-CREATE TABLE IF NOT EXISTS provider_service_areas (
-  user_id           UUID PRIMARY KEY REFERENCES users(id) ON DELETE RESTRICT,
-  area_label        VARCHAR(120) NOT NULL CHECK (char_length(area_label) BETWEEN 1 AND 120),
-  base_lat          NUMERIC(9,6) NOT NULL CHECK (base_lat BETWEEN -90 AND 90),
-  base_lng          NUMERIC(9,6) NOT NULL CHECK (base_lng BETWEEN -180 AND 180),
-  radius_km         SMALLINT NOT NULL CHECK (radius_km BETWEEN 1 AND 200),
-  willing_to_travel BOOLEAN NOT NULL DEFAULT FALSE,
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_provider_service_areas_coords
-  ON provider_service_areas (base_lat, base_lng);
--- 029-service-locations.sql (DRAFT, revised 2026-11-13)
--- The exact address and pin of an onsite task. Kept until the business removes it: there is no
--- purge timer. Removal deletes the row and writes an audit entry without the address.
--- region_code and time_zone come from the location, so no one types a time zone by hand.
+  ON bounties (area_label) WHERE task_mode = 'onsite' AND status = 'open';
+-- 029-service-locations.sql (DRAFT, revised 2026-11-13: no coordinates)
+-- The exact address of an on-site task, plus the region and time zone that let the server
+-- format deadlines and visit windows for the person reading them. Kept until the business
+-- removes it: there is no purge timer. Removal deletes the row and writes an audit entry
+-- without the address.
 CREATE TABLE IF NOT EXISTS service_locations (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   bounty_id    UUID NOT NULL UNIQUE REFERENCES bounties(id) ON DELETE RESTRICT,
   address_text TEXT NOT NULL CHECK (char_length(address_text) BETWEEN 5 AND 500),
-  lat          NUMERIC(9,6) NOT NULL CHECK (lat BETWEEN -90 AND 90),
-  lng          NUMERIC(9,6) NOT NULL CHECK (lng BETWEEN -180 AND 180),
   region_code  CHAR(2) NOT NULL CHECK (region_code ~ '^[A-Z]{2}$'),
   time_zone    VARCHAR(64) NOT NULL CHECK (char_length(time_zone) BETWEEN 3 AND 64),
   created_by   UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_service_locations_region ON service_locations (region_code);
 -- 030-quotations.sql (DRAFT, revised 2026-11-13)
 -- A quotation is a proposal and moves no money. Its amount is in the task's currency
 -- (bounties.currency), so there is no currency column here.
@@ -202,14 +189,14 @@ CREATE INDEX IF NOT EXISTS idx_appointment_messages_thread
 CREATE OR REPLACE TRIGGER appointment_messages_append_only
   BEFORE UPDATE OR DELETE ON appointment_messages
   FOR EACH ROW EXECUTE FUNCTION reject_append_only_change();
--- 035-industry-and-availability.sql (DRAFT, 2026-11-13)
+-- 035-industry-and-availability.sql (DRAFT, revised 2026-11-13)
 -- Additive. Businesses record the industry they run; a business's request records the industry
--- and the services it needs (catalogue labels or typed ones). Workers record the kind of work
--- they take (on-site, remote or both) and the hours they are available, in their own time zone.
--- Not applied to the shared database. Apply only after a named approval.
+-- and the services it needs. Workers record the kind of work they take (on-site, remote or
+-- both), the areas they serve (text), and the hours they are free, in their own time zone.
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS industry VARCHAR(40);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS work_modes TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS service_area VARCHAR(240);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS available_start TIME;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS available_end TIME;
 

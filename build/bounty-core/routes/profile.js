@@ -15,7 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SELECT_ME = `SELECT id, email, name, role, bio, avatar_url, categories, skills, website, location,
   onboarding_done, total_earned, reputation_score,
   timezone, languages, weekly_hours, to_char(available_from, 'YYYY-MM-DD') AS available_from, discoverable, country,
-  industry, work_modes, to_char(available_start, 'HH24:MI') AS available_start, to_char(available_end, 'HH24:MI') AS available_end,
+  industry, work_modes, service_area, to_char(available_start, 'HH24:MI') AS available_start, to_char(available_end, 'HH24:MI') AS available_end,
   is_admin
   FROM users WHERE id = $1`;
 
@@ -42,6 +42,7 @@ function publicUser(row) {
     country: row.country ? String(row.country).trim() : null,
     industry: row.industry || null,
     work_modes: row.work_modes || [],
+    service_area: row.service_area || null,
     available_start: row.available_start || null,
     available_end: row.available_end || null,
     is_admin: row.is_admin === true
@@ -180,6 +181,9 @@ router.patch('/me', authenticate, async (req, res, next) => {
     }
     if (body.work_modes !== undefined) {
       add('work_modes', body.work_modes === null ? [] : hs.validateWorkModes(body.work_modes));
+    }
+    if (body.service_area !== undefined) {
+      add('service_area', hs.validateServiceArea(body.service_area));
     }
     if (body.available_start !== undefined || body.available_end !== undefined) {
       // Both ends together, or neither. Clearing both removes the hours.

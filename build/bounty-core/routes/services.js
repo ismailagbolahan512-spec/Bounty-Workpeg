@@ -1,11 +1,9 @@
 // routes/services.js — hospitality services: onsite requests from businesses, quotes from providers,
 // one accepted quote becomes an appointment, both sides confirm, then chat and status lines.
 //
-//   PUT    /api/services/provider-area                 worker: area and radius (private)
-//   GET    /api/services/provider-area                 worker: own area
-//   POST   /api/services/requests                      business: describe, price, location
+//   POST   /api/services/requests                      business: describe, price, address
 //   GET    /api/services/requests?mine=1               business: own requests (with the address)
-//   GET    /api/services/requests                      worker: open requests within reach (no address)
+//   GET    /api/services/requests                      worker: open onsite requests (no address)
 //   GET    /api/services/requests/:id                  owner, or a provider who quoted or is assigned
 //   DELETE /api/services/requests/:id/address          business: remove the stored address
 //   POST   /api/services/requests/:id/quotes           worker: quote
@@ -26,7 +24,6 @@ const { authenticate, requireRole, httpError } = require('../middleware/auth');
 const { assertActiveAccount, requireAgreement, logAudit } = require('../services/protection');
 const { createNotification } = require('./notifications');
 const hs = require('../services/hospitality');
-const loc = require('../services/location');
 const catalogue = require('../services/hospitality-catalogue');
 
 const router = express.Router();
@@ -62,14 +59,13 @@ async function nameOf(userId) {
     return rows[0] ? rows[0].name : 'Someone';
 }
 
-// The owner's view of a request: everything, including the exact address and pin. Internal columns
+// The owner's view of a request: everything, including the exact address. Internal columns
 // (business id, epoch deadline) never leave the server.
 function ownerView(r) {
     return {
         id: r.id, title: r.title, problem: r.problem, needs: r.needs, price: Number(r.price),
         currency: r.currency, area_label: r.area_label, status: r.status,
-        address: r.address_text || null, lat: r.lat === null || r.lat === undefined ? null : Number(r.lat),
-        lng: r.lng === null || r.lng === undefined ? null : Number(r.lng),
+        address: r.address_text || null,
         region_code: r.region_code || null, time_zone: r.time_zone || null,
         local_deadline: hs.formatLocal(deadlineDate(r), r.time_zone || 'UTC'),
         pending_quotes: r.pending_quotes === undefined ? undefined : Number(r.pending_quotes),
@@ -77,42 +73,9 @@ function ownerView(r) {
     };
 }
 
-function distanceFrom(area, point) {
-    return loc.haversineKm({ lat: Number(area.lat), lng: Number(area.lng) }, { lat: Number(point.lat), lng: Number(point.lng) });
-}
-
 // The industries and the services each usually needs, for the request form.
 router.get('/catalogue', (req, res) => {
     res.json({ industries: catalogue.INDUSTRIES, max_services: catalogue.MAX_SERVICES });
-});
-
-// ------------------------------------------------------------------ provider area
-
-router.get('/provider-area', requireRole('worker'), async(req, res, next) => {
-    try {
-        const { rows } = await pool.query(
-            `SELECT area_label, base_lat AS lat, base_lng AS lng, radius_km, willing_to_travel, updated_at
-             FROM provider_service_areas WHERE user_id = $1`, [req.user.id]
-        );
-        res.json({ area: rows[0] || null });
-    } catch (err) { next(err); }
-});
-
-router.put('/provider-area', requireRole('worker'), async(req, res, next) => {
-    try {
-        await assertActiveAccount(req.user.id);
-        const area = hs.validateProviderArea(req.body);
-        const { rows } = await pool.query(
-            `INSERT INTO provider_service_areas (user_id, area_label, base_lat, base_lng, radius_km, willing_to_travel, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())
-             ON CONFLICT (user_id) DO UPDATE SET
-               area_label = EXCLUDED.area_label, base_lat = EXCLUDED.base_lat, base_lng = EXCLUDED.base_lng,
-               radius_km = EXCLUDED.radius_km, willing_to_travel = EXCLUDED.willing_to_travel, updated_at = NOW()
-             RETURNING area_label, base_lat AS lat, base_lng AS lng, radius_km, willing_to_travel, updated_at`,
-            [req.user.id, area.areaLabel, area.lat, area.lng, area.radiusKm, area.willingToTravel]
-        );
-        res.json({ area: rows[0] });
-    } catch (err) { next(err); }
 });
 
 // ------------------------------------------------------------------ requests
@@ -127,18 +90,18 @@ router.post('/requests', requireRole('business'), async(req, res, next) => {
             const { rows } = await client.query(
                 `INSERT INTO bounties
                    (business_id, title, description, category, difficulty, reward_amount, deadline, submission_type,
-                    requirements, status, created_at, updated_at, currency, task_mode, area_label, approx_lat, approx_lng,
+                    requirements, status, created_at, updated_at, currency, task_mode, area_label,
                     service_industry, service_labels)
-                 VALUES ($1, $2, $3, $4, 'easy', $5, $6, 'text', $7, 'open', NOW(), NOW(), $8, 'onsite', $9, $10, $11, $12, $13)
+                 VALUES ($1, $2, $3, $4, 'easy', $5, $6, 'text', $7, 'open', NOW(), NOW(), $8, 'onsite', $9, $10, $11)
                  RETURNING id`,
                 [req.user.id, r.title, r.problem, hs.CATEGORY, r.price, r.deadline.toISOString(), r.needs,
-                    r.currency, r.areaLabel, loc.roundPublic(r.lat), loc.roundPublic(r.lng), r.industry, r.serviceLabels]
+                    r.currency, r.areaLabel, r.industry, r.serviceLabels]
             );
             const id = rows[0].id;
             await client.query(
-                `INSERT INTO service_locations (bounty_id, address_text, lat, lng, region_code, time_zone, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [id, r.address, r.lat, r.lng, r.region, r.timeZone, req.user.id]
+                `INSERT INTO service_locations (bounty_id, address_text, region_code, time_zone, created_by)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [id, r.address, r.region, r.timeZone, req.user.id]
             );
             await logAudit(client.query.bind(client), req.user.id, 'service_request.created', 'bounty', id, {
                 region: r.region, currency: r.currency,
@@ -161,7 +124,7 @@ async function listMine(req, res) {
     const { rows } = await pool.query(
         `SELECT b.id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
                 b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_industry AS industry, b.service_labels AS services,
-                sl.address_text AS address, sl.lat, sl.lng, sl.region_code, sl.time_zone,
+                sl.address_text AS address, sl.region_code, sl.time_zone,
                 (SELECT COUNT(*) FROM quotations q WHERE q.bounty_id = b.id AND q.status = 'pending')::int AS pending_quotes
          FROM bounties b
          LEFT JOIN service_locations sl ON sl.bounty_id = b.id
@@ -171,26 +134,21 @@ async function listMine(req, res) {
     res.json({ requests: rows.map(ownerView) });
 }
 
-// Open requests a provider can reach. Only the distance band leaves the server, never the pin.
+// Open requests in the region a worker said they serve. The provider decides from the area label
+// if they can reach. Remote-only workers are kept out.
 async function listForProvider(req, res) {
-    const { rows: areaRows } = await pool.query(
-        'SELECT base_lat AS lat, base_lng AS lng, radius_km, willing_to_travel FROM provider_service_areas WHERE user_id = $1',
-        [req.user.id]
-    );
-    if (areaRows.length === 0) {
-        return res.json({ requests: [], needs_area: true });
-    }
     const { rows: me } = await pool.query('SELECT work_modes FROM users WHERE id = $1', [req.user.id]);
     const modes = (me[0] && me[0].work_modes) || [];
-    // Workers who only take remote work do not see on-site requests. Empty means not answered yet.
-    if (modes.length > 0 && !modes.includes('onsite')) {
+    if (modes.length === 0) {
+        return res.json({ requests: [], needs_area: true });
+    }
+    if (!modes.includes('onsite')) {
         return res.json({ requests: [], needs_area: false, work_mode_off: true });
     }
-    const area = areaRows[0];
     const { rows } = await pool.query(
         `SELECT b.id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
                 b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_labels AS services,
-                sl.lat, sl.lng, sl.region_code, sl.time_zone
+                sl.region_code, sl.time_zone
          FROM bounties b
          JOIN service_locations sl ON sl.bounty_id = b.id
          WHERE b.task_mode = 'onsite' AND b.category = $1 AND b.status = 'open' AND b.deadline > NOW()
@@ -202,21 +160,17 @@ async function listForProvider(req, res) {
     );
     const quoted = new Map(mine.map((q) => [String(q.bounty_id), q]));
 
-    const visible = [];
-    for (const r of rows) {
-        const distanceKm = distanceFrom(area, r);
-        if (!hs.providerCanSee(distanceKm, area)) continue;
+    const visible = rows.map((r) => {
         const q = quoted.get(String(r.id));
-        visible.push({
+        return {
             id: r.id, title: r.title, problem: r.problem, needs: r.needs, price: Number(r.price),
             currency: r.currency, area_label: r.area_label, status: r.status,
             services: r.services || [],
-            distance_band: hs.publicDistance(distanceKm),
             region_code: r.region_code,
             local_deadline: hs.formatLocal(deadlineDate(r), r.time_zone),
             my_quote: q ? { status: q.status, amount: Number(q.amount) } : null,
-        });
-    }
+        };
+    });
     res.json({ requests: visible, needs_area: false });
 }
 
@@ -242,13 +196,14 @@ async function liveAppointment(bountyId, providerId) {
     return rows[0] ? { ...publicAppointment(rows[0]), provider_id: rows[0].provider_id } : null;
 }
 
-// One request. The owner sees everything. A provider who quoted or is assigned sees the area and band.
+// One request. The owner sees everything. A provider who quoted or is assigned sees the area label
+// and the region, and the address only once both sides have confirmed the visit.
 router.get('/requests/:id', async(req, res, next) => {
     try {
         const { rows } = await pool.query(
             `SELECT b.id, b.business_id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
                     b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_industry AS industry, b.service_labels AS services,
-                    sl.address_text, sl.lat, sl.lng, sl.region_code, sl.time_zone
+                    sl.address_text, sl.region_code, sl.time_zone
              FROM bounties b LEFT JOIN service_locations sl ON sl.bounty_id = b.id
              WHERE b.id = $1 AND b.task_mode = 'onsite' AND b.category = $2`, [req.params.id, hs.CATEGORY]
         );
@@ -271,11 +226,6 @@ router.get('/requests/:id', async(req, res, next) => {
         );
         if (link.length === 0) throw httpError(404, 'Request not found');
 
-        const { rows: areaRows } = await pool.query(
-            'SELECT base_lat AS lat, base_lng AS lng, radius_km, willing_to_travel FROM provider_service_areas WHERE user_id = $1',
-            [req.user.id]
-        );
-        const distance = areaRows[0] ? hs.publicDistance(distanceFrom(areaRows[0], request)) : null;
         const appointment = link[0].appointment_id ? {
             id: link[0].appointment_id, status: link[0].appointment_status, provider_id: req.user.id,
             provider_confirmed_at: link[0].provider_confirmed_at, business_confirmed_at: link[0].business_confirmed_at,
@@ -284,9 +234,10 @@ router.get('/requests/:id', async(req, res, next) => {
         const view = {
             id: request.id, title: request.title, problem: request.problem, needs: request.needs,
             price: Number(request.price), currency: request.currency, area_label: request.area_label,
-            status: request.status, distance_band: distance, region_code: request.region_code,
+            status: request.status, region_code: request.region_code,
             local_deadline: hs.formatLocal(deadlineDate(request), request.time_zone),
             my_quote_status: link[0].quote_status,
+            services: request.services || [],
             viewer_role: 'provider',
             appointment: await liveAppointment(request.id, req.user.id),
         };
@@ -318,7 +269,7 @@ router.post('/requests/:id/quotes', requireRole('worker'), async(req, res, next)
         const q = hs.validateQuote(req.body);
         const { rows } = await pool.query(
             `SELECT b.id, b.business_id, b.title, b.status, b.deadline AS deadline_utc, ${DEADLINE_MS},
-                    sl.lat, sl.lng, sl.time_zone
+                    sl.time_zone
              FROM bounties b JOIN service_locations sl ON sl.bounty_id = b.id
              WHERE b.id = $1 AND b.task_mode = 'onsite' AND b.category = $2`, [req.params.id, hs.CATEGORY]
         );
@@ -332,14 +283,9 @@ router.post('/requests/:id/quotes', requireRole('worker'), async(req, res, next)
         );
         if (accepted.length > 0) throw httpError(409, 'A provider has already been chosen for this request');
 
-        const { rows: areaRows } = await pool.query(
-            'SELECT base_lat AS lat, base_lng AS lng, radius_km, willing_to_travel FROM provider_service_areas WHERE user_id = $1',
-            [req.user.id]
-        );
-        if (areaRows.length === 0) throw httpError(422, 'Set your service area before you quote');
-        if (!hs.providerCanSee(distanceFrom(areaRows[0], request), areaRows[0])) {
-            throw httpError(403, 'This request is outside your service area');
-        }
+        const { rows: meRows } = await pool.query('SELECT work_modes FROM users WHERE id = $1', [req.user.id]);
+        const modes = (meRows[0] && meRows[0].work_modes) || [];
+        if (!modes.includes('onsite')) throw httpError(422, 'Turn on on-site work on your profile before you quote');
 
         let quote;
         try {
@@ -586,7 +532,7 @@ router.get('/appointments/:id/address', async(req, res, next) => {
         if (!hs.canSeeAddress(req.user, { business_id: a.business_id }, a)) {
             throw httpError(403, 'The address opens once both sides confirm the visit');
         }
-        const { rows } = await pool.query('SELECT address_text, lat, lng FROM service_locations WHERE bounty_id = $1', [a.bounty_id]);
+        const { rows } = await pool.query('SELECT address_text FROM service_locations WHERE bounty_id = $1', [a.bounty_id]);
         if (rows.length === 0) throw httpError(404, 'The address has been removed');
         await pool.query(`INSERT INTO appointment_events (appointment_id, actor_id, event) VALUES ($1, $2, 'address_disclosed')`, [a.id, req.user.id]);
         res.json({ address: rows[0] });

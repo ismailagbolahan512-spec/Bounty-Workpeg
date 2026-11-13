@@ -38,8 +38,6 @@ const goodRequest = {
     price: '25000',
     region: 'NG',
     address: '12 Adeola Odeku Street, Victoria Island',
-    lat: 6.4281,
-    lng: 3.4219,
     area_label: 'Victoria Island',
     deadline: '2026-11-14T14:00',
     industry: 'hotel',
@@ -74,7 +72,7 @@ test('a currency from another region is refused for this location', () => {
 });
 
 test('a multi-zone region needs one of its zones named', () => {
-    const us = { ...goodRequest, region: 'US', address: '1 Main Street, Springfield', lat: 39.8, lng: -89.6, area_label: 'Springfield', deadline: '2026-11-14T14:00' };
+    const us = { ...goodRequest, region: 'US', address: '1 Main Street, Springfield', area_label: 'Springfield', deadline: '2026-11-14T14:00' };
     assert.throws(() => hs.validateRequest(us, NOW), /Choose the time zone/);
     const ok = hs.validateRequest({ ...us, time_zone: 'America/Chicago' }, NOW);
     assert.equal(ok.currency, 'USD');
@@ -98,26 +96,12 @@ test('a quote needs a positive amount and an optional short note', () => {
     assert.throws(() => hs.validateQuote({ amount: 0 }), /Price/);
 });
 
-test('a provider area needs a whole radius from 1 to 200 km and a valid point', () => {
-    const base = { area_label: 'Yaba', lat: 6.5, lng: 3.3, radius_km: 10 };
-    assert.equal(hs.validateProviderArea(base).radiusKm, 10);
-    assert.throws(() => hs.validateProviderArea({ ...base, radius_km: 0 }), /radius/);
-    assert.throws(() => hs.validateProviderArea({ ...base, radius_km: 10.5 }), /radius/);
-    assert.throws(() => hs.validateProviderArea({ ...base, lat: 120 }), /Latitude/);
-});
-
-test('a provider sees a request inside the radius, or beyond it only when willing to travel', () => {
-    const area = { radius_km: 10, willing_to_travel: false };
-    assert.equal(hs.providerCanSee(4, area), true);
-    assert.equal(hs.providerCanSee(12, area), false);
-    assert.equal(hs.providerCanSee(12, { radius_km: 10, willing_to_travel: true }), true);
-    assert.equal(hs.providerCanSee(4, null), false);
-});
-
-test('the distance a provider sees is a band, never a number', () => {
-    assert.equal(hs.publicDistance(2.5), 'under 5 km');
-    assert.equal(hs.publicDistance(9), '5 to 15 km');
-    assert.equal(hs.publicDistance(40), 'over 15 km');
+test('a provider service area is a free-text label, up to 240 characters', () => {
+    assert.equal(hs.validateServiceArea(''), null);
+    assert.equal(hs.validateServiceArea(null), null);
+    assert.equal(hs.validateServiceArea('  Victoria  Island,  Lekki '), 'Victoria Island, Lekki');
+    assert.throws(() => hs.validateServiceArea('x'.repeat(300)), /240/);
+    assert.throws(() => hs.validateServiceArea({}), /text/);
 });
 
 test('the address is visible to the business, and to the provider only after both confirm', () => {

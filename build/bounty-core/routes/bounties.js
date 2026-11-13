@@ -192,7 +192,8 @@ router.get('/', optionalAuth, async(req, res, next) => {
         const params = [];
 
         // Onsite services are listed on their own page (/api/services), never on the bounty board.
-        conditions.push(`b.task_mode = 'remote'`);
+        // Filter by category so this works whether or not migration 027 has been applied.
+        conditions.push(`b.category <> 'hospitality'`);
 
         if (category !== undefined) {
             conditions.push(`b.category = $${params.length + 1}`);

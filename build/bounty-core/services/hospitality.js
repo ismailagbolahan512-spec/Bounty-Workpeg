@@ -2,8 +2,8 @@
 // so every rule can be unit tested. Routes in routes/services.js apply these rules to real rows.
 //
 //   * Times a person types are local to the place of the service. They become UTC once, here.
-//   * A provider sees the area, the distance band and the request. The exact address comes later,
-//     only after both sides confirm the appointment (see canSeeAddress).
+//   * A provider sees the area label of the request. The exact address comes later, only after
+//     both sides confirm the appointment (see canSeeAddress).
 //   * Chat is open only once an appointment is confirmed, and a message that looks like a street
 //     address is flagged, not hidden.
 
@@ -24,8 +24,7 @@ const NEEDS_MAX = 2000;
 const PRICE_MAX = 9999999999.99;
 const NOTE_MAX = 1000;
 const MESSAGE_MAX = 1000;
-const RADIUS_MIN = 1;
-const RADIUS_MAX = 200;
+const SERVICE_AREA_MAX = 240;
 const WINDOW_MAX_HOURS = 24;
 
 const STATUS_CODES = ['on_the_way', 'arrived', 'started', 'finished'];
@@ -95,7 +94,6 @@ function validateRequest(body, now) {
     const currency = validateTaskCurrency(b.currency === undefined ? currencyForRegion(b.region) : b.currency, [b.region]);
     const timeZone = resolveTimeZone(b.region, b.time_zone);
     const address = loc.validateAddress(b.address);
-    const coords = loc.validateCoordinates(Number(b.lat), Number(b.lng));
     const areaLabel = loc.validateAreaLabel(b.area_label);
     const deadline = localToUtc(b.deadline, timeZone);
     const hours = (deadline.getTime() - now.getTime()) / 3600000;
@@ -106,8 +104,20 @@ function validateRequest(body, now) {
     return {
         industry: b.industry, serviceLabels,
         title, problem, needs, price, currency, region: b.region, timeZone,
-        address, lat: coords.lat, lng: coords.lng, areaLabel, deadline,
+        address, areaLabel, deadline,
     };
+}
+
+// What the worker tells the business about the areas they cover: free text, up to 240 chars.
+// This is for display only — matching is by region, so a provider does not have to list every
+// street. "Victoria Island, Lekki, Ikoyi" is a fine answer.
+function validateServiceArea(text) {
+    if (text === null || text === '' || text === undefined) return null;
+    if (typeof text !== 'string') throw httpError(400, 'The areas you cover must be text');
+    const t = text.trim().replace(/\s+/g, ' ');
+    if (t.length === 0) return null;
+    if (t.length > SERVICE_AREA_MAX) throw httpError(400, `The areas you cover must be ${SERVICE_AREA_MAX} characters or fewer`);
+    return t;
 }
 
 function validateQuote(body) {
@@ -118,20 +128,6 @@ function validateQuote(body) {
         note = trimmed(b.note, 1, NOTE_MAX, 'Note');
     }
     return { amount, note };
-}
-
-function validateProviderArea(body) {
-    const b = body || {};
-    const areaLabel = loc.validateAreaLabel(b.area_label);
-    const coords = loc.validateCoordinates(Number(b.lat), Number(b.lng));
-    const radius = Number(b.radius_km);
-    if (!Number.isInteger(radius) || radius < RADIUS_MIN || radius > RADIUS_MAX) {
-        throw httpError(400, `Service radius must be a whole number from ${RADIUS_MIN} to ${RADIUS_MAX} km`);
-    }
-    return {
-        areaLabel, lat: coords.lat, lng: coords.lng, radiusKm: radius,
-        willingToTravel: b.willing_to_travel === true,
-    };
 }
 
 // The window the business proposes for the visit. Both ends are local to the place of the service.
@@ -149,20 +145,6 @@ function validateWindow(startsLocal, endsLocal, timeZone, deadline) {
 }
 
 // ------------------------------------------------------------- visibility
-
-// A provider may see an open request when it is inside their radius, or when they are willing to
-// travel beyond it. Distance is measured from the exact pin, on the server.
-function providerCanSee(distanceKm, area) {
-    if (!area) return false;
-    if (distanceKm === null || distanceKm === undefined) return false;
-    if (distanceKm <= area.radius_km) return true;
-    return area.willing_to_travel === true;
-}
-
-// Only the distance band leaves the server for a provider. Never the pin or the address.
-function publicDistance(distanceKm) {
-    return loc.distanceBand(distanceKm);
-}
 
 // The exact address is visible to the business that owns the request, and to the provider only when
 // the appointment is confirmed by both parties.
@@ -271,10 +253,10 @@ function visitFitsHours(startsAt, endsAt, zone, startHHMM, endHHMM) {
 }
 
 module.exports = {
-    WORK_MODES, validateWorkModes, validateClock, visitFitsHours,
+    WORK_MODES, validateWorkModes, validateClock, visitFitsHours, validateServiceArea,
     CATEGORY, STATUS_CODES, STATUS_TEXT, ADDRESS_LIKE,
     zoneOffsetMinutes, localToUtc, formatLocal,
-    validateRequest, validateQuote, validateProviderArea, validateWindow, validateChatInput,
-    providerCanSee, publicDistance, canSeeAddress,
+    validateRequest, validateQuote, validateWindow, validateChatInput,
+    canSeeAddress,
     APPOINTMENT_TRANSITIONS, assertTransition, partyOf, assertCanChat, looksLikeAddress,
 };

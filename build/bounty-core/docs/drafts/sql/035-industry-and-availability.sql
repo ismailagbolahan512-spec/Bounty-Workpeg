@@ -1,11 +1,11 @@
--- 035-industry-and-availability.sql (DRAFT, 2026-11-13)
+-- 035-industry-and-availability.sql (DRAFT, revised 2026-11-13)
 -- Additive. Businesses record the industry they run; a business's request records the industry
--- and the services it needs (catalogue labels or typed ones). Workers record the kind of work
--- they take (on-site, remote or both) and the hours they are available, in their own time zone.
--- Not applied to the shared database. Apply only after a named approval.
+-- and the services it needs. Workers record the kind of work they take (on-site, remote or
+-- both), the areas they serve (text), and the hours they are free, in their own time zone.
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS industry VARCHAR(40);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS work_modes TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS service_area VARCHAR(240);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS available_start TIME;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS available_end TIME;
 

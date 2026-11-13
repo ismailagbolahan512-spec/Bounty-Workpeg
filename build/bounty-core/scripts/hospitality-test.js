@@ -62,26 +62,19 @@ async function main() {
     const far = await signUp('worker', 'faraway');
     const second = await signUp('worker', 'second');
 
-    // -------------------------------------------------------------- provider areas
-    const areaNear = await api('PUT', '/api/services/provider-area',
-        { area_label: 'Ikoyi', lat: 6.4531, lng: 3.4360, radius_km: 10, willing_to_travel: false }, near.token);
-    check('a provider sets a private service area', areaNear.status === 200 && areaNear.body.area.radius_km === 10, areaNear.body);
+    // -------------------------------------------------------------- provider work modes
+    // Workers turn on on-site before they can quote on hospitality requests.
+    const nearModes = await api('PATCH', '/api/profile/me', { work_modes: ['onsite'], service_area: 'Victoria Island, Ikoyi' }, near.token);
+    check('a provider turns on on-site and names the areas they cover', nearModes.status === 200 && nearModes.body.work_modes.includes('onsite'), nearModes.body);
 
-    const areaFar = await api('PUT', '/api/services/provider-area',
-        { area_label: 'Abuja', lat: 9.0765, lng: 7.3986, radius_km: 10, willing_to_travel: false }, far.token);
-    check('a provider far away sets an area too', areaFar.status === 200, areaFar.body);
+    const farModes = await api('PATCH', '/api/profile/me', { work_modes: ['onsite'] }, far.token);
+    check('a provider far away also turns on on-site', farModes.status === 200, farModes.body);
 
-    const areaSecond = await api('PUT', '/api/services/provider-area',
-        { area_label: 'Lekki', lat: 6.4478, lng: 3.4723, radius_km: 15, willing_to_travel: false }, second.token);
-    check('a second nearby provider sets an area', areaSecond.status === 200, areaSecond.body);
+    const secondModes = await api('PATCH', '/api/profile/me', { work_modes: ['onsite'] }, second.token);
+    check('a second provider turns on on-site', secondModes.status === 200, secondModes.body);
 
-    const badArea = await api('PUT', '/api/services/provider-area',
-        { area_label: 'Yaba', lat: 6.5, lng: 3.3, radius_km: 0 }, near.token);
-    check('a radius of 0 is refused', badArea.status === 400, badArea.body);
-
-    const businessArea = await api('PUT', '/api/services/provider-area',
-        { area_label: 'Yaba', lat: 6.5, lng: 3.3, radius_km: 5 }, hotel.token);
-    check('a business cannot set a provider area', businessArea.status === 403, businessArea.body);
+    const longArea = await api('PATCH', '/api/profile/me', { service_area: 'x'.repeat(300) }, near.token);
+    check('a service-area string over 240 characters is refused', longArea.status === 400, longArea.body);
 
     // -------------------------------------------------------------- the request
     const requestBody = {
@@ -91,8 +84,6 @@ async function main() {
         price: 25000,
         region: 'NG',
         address: '12 Adeola Odeku Street, Victoria Island, Lagos',
-        lat: 6.4281,
-        lng: 3.4219,
         area_label: 'Victoria Island',
         deadline: lagosLocal(2, 14, 0),
         industry: 'hotel',
@@ -126,15 +117,12 @@ async function main() {
     // -------------------------------------------------------------- what a provider sees
     const listNear = await api('GET', '/api/services/requests', null, near.token);
     const seen = listNear.body.requests.find((r) => r.id === requestId);
-    check('a provider within reach sees the request', Boolean(seen), listNear.body);
-    check('the provider sees the distance band, not the address or pin',
-        seen.distance_band === 'under 5 km' && !('address' in seen) && !('lat' in seen) && !('lng' in seen), seen);
+    check('a provider with on-site turned on sees the open request', Boolean(seen), listNear.body);
+    check('the provider sees the area label, never the address, lat or lng',
+        seen.area_label === 'Victoria Island' && !('address' in seen) && !('lat' in seen) && !('lng' in seen), seen);
     check('the provider sees the problem, the needs, the price and the local deadline',
         seen.problem === requestBody.problem && seen.needs === requestBody.needs && seen.price === 25000 &&
         String(seen.local_deadline).includes('Africa/Lagos'), seen);
-
-    const listFar = await api('GET', '/api/services/requests', null, far.token);
-    check('a provider outside the radius does not see it', !listFar.body.requests.some((r) => r.id === requestId), listFar.body);
 
     const boardLinks = await api('GET', '/api/bounties?limit=50', null, null);
     check('the general bounty board does not show onsite services',
@@ -157,8 +145,11 @@ async function main() {
     const dup = await api('POST', `/api/services/requests/${requestId}/quotes`, { amount: 24000 }, near.token);
     check('a second pending quote from the same provider is refused', dup.status === 409, dup.body);
 
-    const farQuote = await api('POST', `/api/services/requests/${requestId}/quotes`, { amount: 20000 }, far.token);
-    check('a provider outside the radius cannot quote', farQuote.status === 403, farQuote.body);
+    // A worker who has not turned on on-site cannot quote. second has on-site; make a new one.
+    const remoteOnlyQuote = await signUp('worker', 'remote');
+    await api('PATCH', '/api/profile/me', { work_modes: ['remote'] }, remoteOnlyQuote.token);
+    const notEligible = await api('POST', `/api/services/requests/${requestId}/quotes`, { amount: 20000 }, remoteOnlyQuote.token);
+    check('a worker who has not turned on on-site cannot quote', notEligible.status === 422, notEligible.body);
 
     const second1 = await api('POST', `/api/services/requests/${requestId}/quotes`, { amount: 26000 }, second.token);
     check('a second provider quotes too', second1.status === 201, second1.body);
