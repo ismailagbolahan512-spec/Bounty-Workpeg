@@ -7,19 +7,18 @@
     var USER_KEY = 'bounty_user';
     var THEME_KEY = 'bounty_theme';
 
-    var THEMES = {
-        gold: { label: 'Charcoal & Gold', description: 'Dark-first, warm and editorial', color: '#111315' },
-        parchment: { label: 'Off-white & Gold', description: 'Light and warm, with the same gold accent', color: '#F4F1EA' },
-        indigo: { label: 'Indigo & White', description: 'Bright, clean and professional', color: '#3730A3' },
-        navy: { label: 'Deep Navy & Violet', description: 'Night-mode depth with electric violet', color: '#8A3FFC' },
-        emerald: { label: 'Emerald & Ivory', description: 'Warm, calm and growth-focused', color: '#047857' },
-        charcoal: { label: 'Charcoal & Coal', description: 'Monochrome, editorial and quiet', color: '#F2F2F2' }
+    // Three modes: 'system' (default — follows OS prefers-color-scheme),
+    // 'light' and 'dark' (explicit, persisted to localStorage).
+    var THEME_MODES = {
+        system: { label: 'System', description: 'Match my device', icon: 'monitor' },
+        light:  { label: 'Light',  description: 'Always light',   icon: 'sun' },
+        dark:   { label: 'Dark',   description: 'Always dark',    icon: 'moon' }
     };
 
     var state = {
         user: readJSON(USER_KEY),
         token: '',
-        theme: 'gold',
+        themeMode: 'system',
         themeMenu: false,
         mobileMenu: false,
         bountyPage: 1,
@@ -66,6 +65,9 @@
         var common = 'width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
         var paths = {
             sparkles: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14Z"/>',
+            sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
+            moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z"/>',
+            monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
             menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
             close: '<path d="m18 6-12 12M6 6l12 12"/>',
             arrow: '<path d="M5 12h14m-7-7 7 7-7 7"/>',
@@ -347,13 +349,12 @@
 
     /* ============ THEMES ============ */
 
-    function normalizeTheme(value) {
-        if (value === 'dark') return 'navy';
-        if (value === 'coral') return 'charcoal';
-        if (value === 'light') return 'indigo';
-        if (!value) return 'gold';
-        return Object.prototype.hasOwnProperty.call(THEMES, value) ? value : 'gold';
+    function normalizeThemeMode(value) {
+        return (value === 'light' || value === 'dark' || value === 'system') ? value : 'system';
     }
+
+    // Keeps compatibility with older code that calls normalizeTheme.
+    function normalizeTheme(value) { return normalizeThemeMode(value); }
 
     function bellHTML() {
         var notes = state.notifications || [];
@@ -2510,27 +2511,21 @@
     // Runs after each route change: page entrance, headline split, and scroll reveals.
     var scrollHeaderReady = false;
     function renderHeader() {
-        if (currentRoute() === 'home' || currentRoute() === '') {
-            header.hidden = true;
-            header.innerHTML = '';
-            renderHomeThemePicker();
-            return;
-        }
+        // Header shows on every page now, for a consistent navigation anchor.
         removeHomeThemePicker();
         header.hidden = false;
 
         var authed = isAuthenticated();
         var links = authed ?
-            headerLink('bounties', 'Explore bounties') + headerLink('how-it-works', 'How it works') + headerLink('dashboard', 'Dashboard') + headerLink('protection', 'Trust and safety') + headerLink('services', 'Hospitality services') +
-            (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('opportunities', 'Opportunities') + headerLink('invitations', 'Invitations') + headerLink('assessments', 'Skill checks') : '') +
+            headerLink('bounties', 'Marketplace') + headerLink('dashboard', 'Dashboard') + headerLink('how-it-works', 'How it works') + headerLink('protection', 'Trust & safety') +
+            (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('invitations', 'Invitations') : '') +
             (getRole() === 'business' ? headerLink('talent', 'Talent pool') : '') :
-            headerLink('home', 'Home') + headerLink('how-it-works', 'How it works');
+            headerLink('bounties', 'Marketplace') + headerLink('how-it-works', 'How it works');
         var authActions = authed ?
             '<div class="header-user">' + bellHTML() +
-            '<a class="user-name" href="#/profile">' + escapeHTML(state.user.name || 'Member') + '</a>' +
-            '<a class="btn btn-sm btn-quiet" href="#/profile">Profile</a>' +
-            '<button class="btn btn-sm btn-quiet" id="logout-btn" type="button">' + icon('logout', 16) + ' Log out</button></div>' :
-            '<a class="btn btn-sm btn-quiet desktop-auth" href="#/auth/login">Log in</a><a class="btn btn-primary btn-sm desktop-auth" href="#/auth/signup">Get started ' + icon('arrow', 16) + '</a>';
+            '<a class="user-name" href="#/profile">' + escapeHTML((state.user.name || 'Member').split(' ')[0]) + '</a>' +
+            '<button class="btn btn-sm btn-quiet" id="logout-btn" type="button" title="Log out" aria-label="Log out">' + icon('logout', 16) + '</button></div>' :
+            '<a class="btn btn-sm btn-quiet desktop-auth" href="#/auth/login">Log in</a><a class="btn btn-primary btn-sm desktop-auth" href="#/auth/signup">Get started</a>';
         var mobileLinks = authed ?
             links + '<a href="#/profile">Profile</a><button type="button" id="mobile-logout">Log out</button>' :
             '<a href="#/auth/login">Log in</a><a href="#/auth/signup">Create account</a>';
@@ -2538,10 +2533,10 @@
         header.className = 'site-header';
         header.innerHTML =
             '<div class="header-inner">' +
-            '<a class="brand" href="#/" aria-label="Bounty home"><span class="brand-mark">' + icon('sparkles', 21) + '</span><span>Bounty</span></a>' +
+            '<a class="brand" href="#/" aria-label="Bounty home"><span class="brand-mark">B</span><span class="brand-word">Bounty</span></a>' +
             '<nav class="nav-links" aria-label="Main navigation">' + links + '</nav>' +
             '<span class="header-spacer"></span>' +
-            '<div class="header-actions">' +
+            '<div class="header-tail">' +
             themePickerHTML() +
             authActions +
             '<button class="icon-button mobile-menu" id="mobile-menu-btn" type="button" aria-expanded="' + state.mobileMenu + '" aria-controls="mobile-nav" aria-label="Toggle navigation">' + icon(state.mobileMenu ? 'close' : 'menu', 20) + '</button>' +
@@ -2632,32 +2627,43 @@
             closing + '</div></section>';
     }
 
-    function applyTheme(theme) {
-        theme = normalizeTheme(theme);
-        state.theme = theme;
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem(THEME_KEY, theme);
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', THEMES[theme].color);
+    function applyTheme(mode) {
+        mode = normalizeThemeMode(mode);
+        state.themeMode = mode;
+        if (mode === 'system') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', mode);
+        }
+        try { localStorage.setItem(THEME_KEY, mode); } catch (e) { /* ignore */ }
         renderHeader();
-        toast(THEMES[theme].label + ' theme applied.', 'success');
+    }
+
+    // True if the viewport is currently rendering dark, whether by explicit choice or by OS.
+    function currentDark() {
+        var attr = document.documentElement.getAttribute('data-theme');
+        if (attr === 'dark') return true;
+        if (attr === 'light') return false;
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
 
     function themePickerHTML() {
-        var current = normalizeTheme(state.theme);
-        var options = Object.keys(THEMES).map(function(key) {
-            var t = THEMES[key];
+        var current = normalizeThemeMode(state.themeMode);
+        // The icon on the trigger follows the effective scheme, not the stored mode,
+        // so a user in 'system' sees the real sun or moon.
+        var triggerIcon = current === 'system' ? (currentDark() ? 'moon' : 'sun') : THEME_MODES[current].icon;
+        var options = Object.keys(THEME_MODES).map(function(key) {
+            var m = THEME_MODES[key];
             return '<button type="button" class="theme-option" data-theme-choice="' + key + '" aria-pressed="' + (key === current) + '">' +
-                '<span class="swatch" style="background:' + t.color + '"></span>' +
-                '<span class="theme-option-text"><strong>' + escapeHTML(t.label) + '</strong><small>' + escapeHTML(t.description) + '</small></span>' +
+                '<span class="theme-option-icon">' + icon(m.icon, 16) + '</span>' +
+                '<span class="theme-option-text"><strong>' + escapeHTML(m.label) + '</strong><small>' + escapeHTML(m.description) + '</small></span>' +
                 '</button>';
         }).join('');
-        return '<div class="theme-picker-wrap">' +
-            '<button class="theme-picker-trigger" id="theme-picker-trigger" type="button" aria-haspopup="true" aria-expanded="' + (state.themeMenu ? 'true' : 'false') + '" aria-controls="theme-menu">' +
-            '<span class="swatch" style="background:' + THEMES[current].color + '"></span>' +
-            '<span class="theme-picker-label">' + escapeHTML(THEMES[current].label) + '</span>' +
+        return '<div class="theme-menu-wrap">' +
+            '<button class="theme-trigger" id="theme-picker-trigger" type="button" aria-haspopup="true" aria-expanded="' + (state.themeMenu ? 'true' : 'false') + '" aria-controls="theme-menu" aria-label="Choose colour mode">' +
+            icon(triggerIcon, 18) +
             '</button>' +
-            '<div class="theme-menu" id="theme-menu"' + (state.themeMenu ? '' : ' hidden') + '>' + options + '</div>' +
+            (state.themeMenu ? '<div class="theme-popover" id="theme-menu" role="menu">' + options + '</div>' : '') +
             '</div>';
     }
 
@@ -3175,8 +3181,19 @@
     }
 
     function init() {
-        state.theme = normalizeTheme(localStorage.getItem(THEME_KEY));
-        document.documentElement.setAttribute('data-theme', state.theme);
+        // Read the saved mode (set pre-paint by the inline script in index.html).
+        var saved = null;
+        try { saved = localStorage.getItem(THEME_KEY); } catch (e) { saved = null; }
+        state.themeMode = normalizeThemeMode(saved);
+        // The inline script already set data-theme for light/dark; for system we leave it off.
+        if (state.themeMode === 'system') document.documentElement.removeAttribute('data-theme');
+        // Repaint the header when the OS scheme flips, so the Sun/Moon icon updates in System mode.
+        if (window.matchMedia) {
+            var mq = window.matchMedia('(prefers-color-scheme: dark)');
+            var listener = function() { if (state.themeMode === 'system') renderHeader(); };
+            if (mq.addEventListener) mq.addEventListener('change', listener);
+            else if (mq.addListener) mq.addListener(listener);
+        }
 
         if (state.user && !state.user.id) setSession(null, '');
         // Old builds kept the login token in localStorage. Remove it so it cannot be read there.
@@ -3207,7 +3224,7 @@
         });
 
         document.addEventListener('click', function(event) {
-            if (state.themeMenu && !(event.target.closest && event.target.closest('.theme-picker-wrap'))) {
+            if (state.themeMenu && !(event.target.closest && event.target.closest('.theme-menu-wrap'))) {
                 state.themeMenu = false;
                 renderHeader();
             }
