@@ -14,7 +14,7 @@ from workpeg.ui import (
 from components import EmptyState, ErrorState, LoadingState, AppointmentStatusTag
 
 # Bounty's integration surface. Confirm the production host before publishing.
-API = "https://bounty-xyty.onrender.com/api/peg"
+API = "https://bounty-workpeg.onrender.com/api/peg"
 TOKEN_COOKIE = "bounty_token"
 
 
@@ -112,7 +112,7 @@ class ServicesPage(App):
                             Text(self.error, tone="danger", visible=self.error != ""),
                             Row(
                                 Link("Open Bounty →",
-                                     href="https://bounty-xyty.onrender.com/#/connections/workpeg"),
+                                     href="https://bounty-workpeg.onrender.com/#/connections/workpeg"),
                                 Spacer(),
                                 self.connect_button(),
                             ),
@@ -175,7 +175,7 @@ class ServicesPage(App):
                            "Post a request on Bounty to see it here."),
                 Row(Spacer(),
                     Link("Open Bounty →",
-                         href="https://bounty-xyty.onrender.com/#/services/new")),
+                         href="https://bounty-workpeg.onrender.com/#/services/new")),
                 gap=8,
             )
         else:
@@ -197,7 +197,7 @@ class ServicesPage(App):
                 Spacer(),
                 Tag(f"{r.get('pending_quotes', 0)} pending", tone="accent"),
                 Link("Open →",
-                     href=f"https://bounty-xyty.onrender.com/#/services/{r.get('id', '')}"),
+                     href=f"https://bounty-workpeg.onrender.com/#/services/{r.get('id', '')}"),
                 gap=8, align="center",
             ),
             variant="card", padding=16,
@@ -226,7 +226,7 @@ class ServicesPage(App):
                 Spacer(),
                 AppointmentStatusTag(a.get("status", "")),
                 Link("Open →",
-                     href=f"https://bounty-xyty.onrender.com/#/services/{a.get('bounty_id', '')}"),
+                     href=f"https://bounty-workpeg.onrender.com/#/services/{a.get('bounty_id', '')}"),
                 gap=8, align="center",
             ),
             variant="card", padding=16,
