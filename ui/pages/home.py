@@ -17,7 +17,7 @@ class HomePage(App):
             Column(
                 Column(
                     Text(f"Welcome to {store.business}", variant="heading"),
-                    Text("Post small jobs and review the work people send back.",
+                    Text("Link your Bounty account to see open tasks.",
                          variant="muted"),
                     gap=4,
                 ),
@@ -27,7 +27,7 @@ class HomePage(App):
                         Expanded(
                             Column(
                                 Text("Bounties", weight="semibold"),
-                                Text("Open jobs, submitted work and approvals.",
+                                Text("Open bounties from your Bounty account.",
                                      variant="caption"),
                                 gap=4,
                             ),

@@ -90,6 +90,37 @@ class ErrorState(Component):
         )
 
 
+class BountyRow(Component):
+    """One open bounty from Bounty: title, what it is, reward, due and status."""
+
+    def __init__(self, title, meta, reward, due, status):
+        self.title = title
+        self.meta = meta
+        self.reward = reward
+        self.due = due
+        self.status = status
+
+    def build(self):
+        return Container(
+            Column(
+                Row(
+                    Expanded(
+                        Column(
+                            Text(self.title, weight="semibold"),
+                            Text(self.meta, variant="caption"),
+                            gap=4,
+                        ),
+                    ),
+                    BountyStatusTag(self.status),
+                    align="center", gap=16,
+                ),
+                Text(f"{self.reward} · {self.due}", variant="muted"),
+                gap=8,
+            ),
+            variant="card", padding=24,
+        )
+
+
 class BountyStatusTag(Component):
     """A bounty's status as a labelled, toned Tag.
 
