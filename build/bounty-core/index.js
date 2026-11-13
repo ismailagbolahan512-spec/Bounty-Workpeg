@@ -91,6 +91,12 @@ app.use(errorHandler);
 
 app.listen(process.env.PORT || 3000, () => {
     console.log('✓ Server running on port', process.env.PORT || 3000);
+    // Apply the hospitality schema in the background. The server is already accepting requests;
+    // routes that need these columns return a plain 503 until the migration finishes (usually a
+    // second or two). On the next boot the migration is a no-op.
+    require('./services/auto-migrate').run().catch((err) => {
+        console.error('auto-migrate: unexpected failure -', err);
+    });
 });
 
 module.exports = { notFound, errorHandler }
