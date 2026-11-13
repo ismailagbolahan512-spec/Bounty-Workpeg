@@ -25,3 +25,10 @@
 /* Workpeg links */
 .wp-token { display: block; word-break: break-all; padding: 12px; margin: 8px 0; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); font-size: 0.9rem; }
 .check-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+
+/* Shared list and form rows for feature screens (hospitality, workpeg, phases). */
+.list-plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.card-row { padding: 12px 14px; border: 1px solid var(--line, #e3e6ea); border-radius: 12px; background: var(--surface, transparent); }
+.form-row { display: flex; align-items: center; gap: 10px; }
+.form-row input { flex: 1; }
+.h4 { font-size: 1.05rem; margin: 24px 0 8px; }

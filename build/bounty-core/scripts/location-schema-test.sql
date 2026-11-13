@@ -3,7 +3,7 @@
 --   psql "$SCRATCH_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/location-schema-test.sql
 -- Everything runs in one transaction and is rolled back, so no rows remain.
 -- Each refusal is checked: an expected refusal that does NOT happen fails the run.
--- Design: docs/drafts/location-migrations-027-032.md and docs/drafts/approval-snapshot-033.md.
+-- Design: docs/drafts/sql/ (the revised 027 to 033 set) and docs/drafts/hospitality-schema-review.md.
 
 BEGIN;
 
@@ -58,26 +58,38 @@ SELECT pg_temp.expect_refused($$INSERT INTO provider_service_areas (user_id, are
 SELECT pg_temp.expect_refused($$INSERT INTO provider_service_areas (user_id, area_label, base_lat, base_lng, radius_km)
   VALUES ('00000000-0000-4000-8000-00000000000c','Yaba',100,3.38,10)$$, '028 base latitude out of range');
 
--- ---------- 029: private service addresses ----------
-SELECT pg_temp.expect_ok($$INSERT INTO service_locations (bounty_id, address_text, lat, lng, created_by)
-  SELECT id, '12 Adeola Odeku St', 6.4281, 3.4219, '00000000-0000-4000-8000-00000000000a'
+-- ---------- 029: private service addresses (region and time zone come from the location) ----------
+SELECT pg_temp.expect_ok($$INSERT INTO service_locations (bounty_id, address_text, lat, lng, region_code, time_zone, created_by)
+  SELECT id, '12 Adeola Odeku St', 6.4281, 3.4219, 'NG', 'Africa/Lagos', '00000000-0000-4000-8000-00000000000a'
   FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '029 valid service address');
-SELECT pg_temp.expect_refused($$INSERT INTO service_locations (bounty_id, address_text, lat, lng, created_by)
-  SELECT id, 'abc', 6.4281, 3.4219, '00000000-0000-4000-8000-00000000000a'
+SELECT pg_temp.expect_refused($$INSERT INTO service_locations (bounty_id, address_text, lat, lng, region_code, time_zone, created_by)
+  SELECT id, 'abc', 6.4281, 3.4219, 'NG', 'Africa/Lagos', '00000000-0000-4000-8000-00000000000a'
   FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '029 address shorter than 5 characters');
-SELECT pg_temp.expect_refused($$INSERT INTO service_locations (bounty_id, address_text, lat, lng, created_by)
-  SELECT id, '99 Other St', 6.4, 3.4, '00000000-0000-4000-8000-00000000000a'
+SELECT pg_temp.expect_refused($$INSERT INTO service_locations (bounty_id, address_text, lat, lng, region_code, time_zone, created_by)
+  SELECT id, '99 Other St', 6.4, 3.4, 'NG', 'Africa/Lagos', '00000000-0000-4000-8000-00000000000a'
   FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '029 second address for the same task');
+SELECT pg_temp.expect_refused($$INSERT INTO service_locations (bounty_id, address_text, lat, lng, region_code, time_zone, created_by)
+  SELECT id, '5 Test Road', 6.4, 3.4, 'nga', 'Africa/Lagos', '00000000-0000-4000-8000-00000000000a'
+  FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '029 region code that is not two capital letters');
 
--- ---------- 030: quotations ----------
-SELECT pg_temp.expect_ok($$INSERT INTO quotations (bounty_id, provider_id, amount, currency)
-  SELECT id, '00000000-0000-4000-8000-00000000000b', 5000, 'NGN' FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 valid quotation');
-SELECT pg_temp.expect_refused($$INSERT INTO quotations (bounty_id, provider_id, amount, currency)
-  SELECT id, '00000000-0000-4000-8000-00000000000c', 0, 'NGN' FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 zero amount');
-SELECT pg_temp.expect_refused($$INSERT INTO quotations (bounty_id, provider_id, amount, currency)
-  SELECT id, '00000000-0000-4000-8000-00000000000b', 6000, 'NGN' FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 second quotation from the same provider');
-SELECT pg_temp.expect_refused($$INSERT INTO quotations (bounty_id, provider_id, amount, currency)
-  SELECT id, '00000000-0000-4000-8000-00000000000c', 6000, 'ngn' FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 lowercase currency code');
+-- ---------- 030: quotations (amount is in the task currency; no currency column) ----------
+SELECT pg_temp.expect_ok($$INSERT INTO quotations (bounty_id, provider_id, amount)
+  SELECT id, '00000000-0000-4000-8000-00000000000b', 5000 FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 valid quotation');
+SELECT pg_temp.expect_refused($$INSERT INTO quotations (bounty_id, provider_id, amount)
+  SELECT id, '00000000-0000-4000-8000-00000000000c', 0 FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 zero amount');
+SELECT pg_temp.expect_refused($$INSERT INTO quotations (bounty_id, provider_id, amount)
+  SELECT id, '00000000-0000-4000-8000-00000000000b', 6000 FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 second pending quotation from the same provider');
+SELECT pg_temp.expect_ok($$INSERT INTO quotations (bounty_id, provider_id, amount, status)
+  SELECT id, '00000000-0000-4000-8000-00000000000b', 5200, 'accepted' FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 one accepted quotation on a task');
+SELECT pg_temp.expect_refused($$INSERT INTO quotations (bounty_id, provider_id, amount, status)
+  SELECT id, '00000000-0000-4000-8000-00000000000c', 6000, 'accepted' FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 second accepted quotation on one task');
+SELECT pg_temp.expect_ok($$UPDATE quotations SET status = 'declined' WHERE provider_id = '00000000-0000-4000-8000-00000000000b' AND status = 'pending'$$, '030 pending quote declined');
+SELECT pg_temp.expect_ok($$INSERT INTO quotations (bounty_id, provider_id, amount)
+  SELECT id, '00000000-0000-4000-8000-00000000000b', 5500 FROM bounties WHERE task_mode = 'onsite' LIMIT 1$$, '030 same provider quotes again after a decline');
+SELECT pg_temp.expect_refused($$INSERT INTO bounties (business_id, title, description, category, reward_amount, deadline, currency)
+  VALUES ('00000000-0000-4000-8000-00000000000a', 'Currency probe', 'x', 'other', 1, NOW() + INTERVAL '1 day', 'ngn')$$, '027 lowercase currency code on a task');
+SELECT pg_temp.expect_refused($$INSERT INTO bounties (business_id, title, description, category, reward_amount, deadline, currency)
+  VALUES ('00000000-0000-4000-8000-00000000000a', 'Currency probe', 'x', 'other', 1, NOW() + INTERVAL '1 day', 'NAIRA')$$, '027 currency longer than three letters');
 
 -- ---------- 031: appointments and history ----------
 SELECT pg_temp.expect_ok($$INSERT INTO appointments (id, bounty_id, provider_id, starts_at, ends_at, proposed_by)

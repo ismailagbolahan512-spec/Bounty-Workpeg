@@ -89,8 +89,8 @@ async function signupVerifiedBase(email, role, name) {
     // ---------------------------------------------------------------- regions catalogue and profile country
     const regions = await api('GET', '/api/global/regions');
     check('the region catalogue is public', regions.status === 200 && regions.body.regions.some((r) => r.code === 'NG'));
-    check('the platform states naira is the only supported currency', regions.body.supported_currency === 'NGN'
-        && regions.body.currencies.filter((c) => c.status === 'supported').map((c) => c.code).join() === 'NGN', regions.body.currencies);
+    check('each region prices in its own currency, with naira as the default', regions.body.default_currency === 'NGN'
+        && regions.body.currencies.some((c) => c.code === 'NGN') && regions.body.currencies.every((c) => c.status === 'supported'), regions.body.currencies);
     check('the payout note never claims a payment method exists', /not confirmed/i.test(regions.body.payout_note) && !/supported payment|we pay|pay via/i.test(regions.body.payout_note));
     check('an unknown country is refused on the profile (400)', (await api('PATCH', '/api/profile/me', { country: 'XX' }, w1.token)).status === 400);
     const setC = await api('PATCH', '/api/profile/me', { country: 'ng' }, w1.token);

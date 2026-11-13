@@ -119,7 +119,7 @@ async function verifiedUser(email, role, name) {
     await wp.waitForSelector('h1:has-text("Opportunities")', { timeout: 10000 }).catch(() => null);
     ok('the worker sees their region', /Nigeria/.test(await wp.textContent('section.detail-section')));
     const currencyText = await wp.textContent('section:has(h2:text-is("Currencies"))');
-    ok('the currency section lists the naira as the supported currency', /Nigerian naira/.test(currencyText) && /NGN/.test(currencyText) && /not supported yet/.test(currencyText));
+    ok('the currency section lists the naira and says payouts are not confirmed', /Nigerian naira/.test(currencyText) && /NGN/.test(currencyText) && /Payouts are not confirmed yet/.test(currencyText));
     ok('the payout status is shown as not confirmed', /Payout methods for this region are not confirmed yet/.test(await wp.textContent('body')));
 
     // ---------------------------------------------------------------- business: task visibility

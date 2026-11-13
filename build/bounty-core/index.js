@@ -82,6 +82,7 @@ app.use('/api/protection', require('./routes/protection'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/integration-tokens', require('./routes/integration-tokens'));
 app.use('/api/peg', require('./routes/peg'));
+app.use('/api/services', require('./routes/services'));
 
 app.use(express.static(require('path').join(__dirname, 'public')));
 

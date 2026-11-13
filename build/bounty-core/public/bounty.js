@@ -2518,7 +2518,7 @@
 
         var authed = isAuthenticated();
         var links = authed ?
-            headerLink('bounties', 'Explore bounties') + headerLink('how-it-works', 'How it works') + headerLink('dashboard', 'Dashboard') + headerLink('protection', 'Trust and safety') + headerLink('settings/workpeg', 'Workpeg') +
+            headerLink('bounties', 'Explore bounties') + headerLink('how-it-works', 'How it works') + headerLink('dashboard', 'Dashboard') + headerLink('protection', 'Trust and safety') + headerLink('settings/workpeg', 'Workpeg') + headerLink('services', 'Hospitality services') +
             (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('opportunities', 'Opportunities') + headerLink('invitations', 'Invitations') + headerLink('assessments', 'Skill checks') : '') +
             (getRole() === 'business' ? headerLink('talent', 'Talent pool') : '') :
             headerLink('home', 'Home') + headerLink('how-it-works', 'How it works');
