@@ -25,9 +25,22 @@ const { assertActiveAccount, requireAgreement, logAudit } = require('../services
 const { createNotification } = require('./notifications');
 const hs = require('../services/hospitality');
 const catalogue = require('../services/hospitality-catalogue');
+const { flags } = require('../services/schema-flags');
 
 const router = express.Router();
 router.use(authenticate);
+
+// If the hospitality migration has not been applied, every route here returns a plain 503
+// instead of a 500 from an unknown table or column. Once the migration is in, this is skipped.
+router.use(async (req, res, next) => {
+    try {
+        const f = await flags();
+        if (!f.serviceLocations || !f.userWorkModes) {
+            return res.status(503).json({ message: 'Hospitality services are not ready on this server yet. Please check back soon.' });
+        }
+        next();
+    } catch (err) { next(err); }
+});
 
 const dbq = (sql, params) => pool.query(sql, params);
 

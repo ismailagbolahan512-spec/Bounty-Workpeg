@@ -8,16 +8,31 @@ const { validTimezone } = require('../services/matching');
 const { isCountry } = require('../services/regions');
 const hs = require('../services/hospitality');
 const catalogue = require('../services/hospitality-catalogue');
+const { flags } = require('../services/schema-flags');
 
 const CATEGORIES = ['dev', 'design', 'content', 'marketing', 'other'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const SELECT_ME = `SELECT id, email, name, role, bio, avatar_url, categories, skills, website, location,
-  onboarding_done, total_earned, reputation_score,
-  timezone, languages, weekly_hours, to_char(available_from, 'YYYY-MM-DD') AS available_from, discoverable, country,
-  industry, work_modes, service_area, to_char(available_start, 'HH24:MI') AS available_start, to_char(available_end, 'HH24:MI') AS available_end,
-  is_admin
-  FROM users WHERE id = $1`;
+// Build SELECT_ME from only the columns the database has. If migrations 027–035 are not applied
+// yet, the hospitality columns are dropped silently and the profile route keeps working.
+async function selectMeQuery() {
+  const f = await flags();
+  const parts = [
+    'id', 'email', 'name', 'role', 'bio', 'avatar_url', 'categories', 'skills', 'website', 'location',
+    'onboarding_done', 'total_earned', 'reputation_score',
+    'timezone', 'languages', 'weekly_hours',
+    "to_char(available_from, 'YYYY-MM-DD') AS available_from",
+    'discoverable', 'country', 'is_admin',
+  ];
+  if (f.userIndustry) parts.push('industry');
+  if (f.userWorkModes) parts.push('work_modes');
+  if (f.userServiceArea) parts.push('service_area');
+  if (f.userHours) {
+    parts.push("to_char(available_start, 'HH24:MI') AS available_start");
+    parts.push("to_char(available_end, 'HH24:MI') AS available_end");
+  }
+  return `SELECT ${parts.join(', ')} FROM users WHERE id = $1`;
+}
 
 function publicUser(row) {
   return {
@@ -51,7 +66,8 @@ function publicUser(row) {
 
 router.get('/me', authenticate, async (req, res, next) => {
   try {
-    const { rows } = await pool.query(SELECT_ME, [req.user.id]);
+    const sql = await selectMeQuery();
+    const { rows } = await pool.query(sql, [req.user.id]);
     if (!rows.length) throw httpError(404, 'Account not found');
     res.json(publicUser(rows[0]));
   } catch (err) { next(err); }
@@ -84,11 +100,19 @@ router.get('/business/:id', authenticate, async (req, res, next) => {
 router.patch('/me', authenticate, async (req, res, next) => {
   try {
     const body = req.body || {};
+    const f = await flags();
     const fields = [];
     const values = [];
     function add(column, value) {
       values.push(value);
       fields.push(column + ' = $' + values.length);
+    }
+    // Drop hospitality fields the database does not yet have. The person is told so, not ignored.
+    function addIfColumn(present, label, column, value) {
+      if (present) return add(column, value);
+      const err = httpError(503, `The ${label} feature is not ready on this server yet. Please check back soon.`);
+      err.expose = true;
+      throw err;
     }
 
     if (body.name !== undefined) {
@@ -172,18 +196,16 @@ router.patch('/me', authenticate, async (req, res, next) => {
       add('country', code);
     }
     if (body.industry !== undefined) {
-      if (body.industry === null || body.industry === '') {
-        add('industry', null);
-      } else {
-        if (!catalogue.validIndustry(body.industry)) throw httpError(400, 'Choose the industry you run from the list');
-        add('industry', body.industry);
-      }
+      const value = (body.industry === null || body.industry === '') ? null : body.industry;
+      if (value !== null && !catalogue.validIndustry(value)) throw httpError(400, 'Choose the industry you run from the list');
+      addIfColumn(f.userIndustry, 'industry', 'industry', value);
     }
     if (body.work_modes !== undefined) {
-      add('work_modes', body.work_modes === null ? [] : hs.validateWorkModes(body.work_modes));
+      const value = body.work_modes === null ? [] : hs.validateWorkModes(body.work_modes);
+      addIfColumn(f.userWorkModes, 'work modes', 'work_modes', value);
     }
     if (body.service_area !== undefined) {
-      add('service_area', hs.validateServiceArea(body.service_area));
+      addIfColumn(f.userServiceArea, 'service area', 'service_area', hs.validateServiceArea(body.service_area));
     }
     if (body.available_start !== undefined || body.available_end !== undefined) {
       // Both ends together, or neither. Clearing both removes the hours.
@@ -193,13 +215,13 @@ router.patch('/me', authenticate, async (req, res, next) => {
         throw httpError(400, 'Give both the start and the end of your hours, or clear both');
       }
       if (start === null || start === '' || start === undefined) {
-        add('available_start', null);
-        add('available_end', null);
+        addIfColumn(f.userHours, 'availability hours', 'available_start', null);
+        addIfColumn(f.userHours, 'availability hours', 'available_end', null);
       } else {
         hs.validateClock(start, 'Start of hours');
         hs.validateClock(end, 'End of hours');
-        add('available_start', String(start));
-        add('available_end', String(end));
+        addIfColumn(f.userHours, 'availability hours', 'available_start', String(start));
+        addIfColumn(f.userHours, 'availability hours', 'available_end', String(end));
       }
     }
     if (body.onboarding_done !== undefined) add('onboarding_done', body.onboarding_done === true);
@@ -213,7 +235,8 @@ router.patch('/me', authenticate, async (req, res, next) => {
     );
     if (!updated.rows.length) throw httpError(404, 'Account not found');
 
-    const { rows } = await pool.query(SELECT_ME, [req.user.id]);
+    const sql = await selectMeQuery();
+    const { rows } = await pool.query(sql, [req.user.id]);
     res.json(publicUser(rows[0]));
   } catch (err) { next(err); }
 });
