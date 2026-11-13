@@ -1,15 +1,35 @@
 <!doctype html>
-<html lang="en" data-theme="gold">
+<html lang="en">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#5b3fc4">
-    <meta name="description" content="Discover meaningful work, complete bounties, and unlock global opportunities with Bounty.">
-    <title>Bounty — Your next opportunity starts here</title>
+    <meta name="theme-color" content="#0E0F13" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#F8F8F6" media="(prefers-color-scheme: light)">
+    <meta name="description" content="Bounty — a marketplace for real work. Businesses post tasks, workers prove their ability by doing them.">
+    <title>Bounty — Work that proves what you can do</title>
+
+    <!-- Pre-paint theme application, so there is no flash of wrong scheme on reload. -->
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('bounty_theme');
+                if (saved === 'light' || saved === 'dark') {
+                    document.documentElement.setAttribute('data-theme', saved);
+                }
+            } catch (e) { /* storage disabled — fall through to system */ }
+        })();
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="system/tokens.css">
+    <link rel="stylesheet" href="system/reset.css">
+    <link rel="stylesheet" href="system/base.css">
+    <link rel="stylesheet" href="system/components.css">
+    <link rel="stylesheet" href="system/layout.css">
     <link rel="stylesheet" href="bounty.css">
     <link rel="stylesheet" href="features/features.css">
 </head>
@@ -23,10 +43,12 @@
     <div id="modal-root"></div>
     <script src="features/core.js"></script>
     <script src="features/phase1.js"></script>
-  <script src="features/phase2.js"></script>
+    <script src="features/phase2.js"></script>
     <script src="features/phase3.js"></script>
     <script src="features/phase4.js"></script>
     <script src="features/protection.js"></script>
+    <script src="features/hospitality.js"></script>
+    <script src="features/connections.js"></script>
     <script src="bounty.js" defer></script>
 </body>
 

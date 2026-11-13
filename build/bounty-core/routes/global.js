@@ -18,7 +18,7 @@ router.get('/regions', (req, res) => {
   res.json({
     regions: REGIONS,
     currencies: CURRENCIES,
-    supported_currency: 'NGN',
+    default_currency: 'NGN',
     payout_note: PAYOUT_NOTE,
   });
 });

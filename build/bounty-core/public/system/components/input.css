@@ -1,0 +1,255 @@
+/* ============================================================
+   Input, textarea, select — form controls.
+   Shared field layout so labels, hints and errors line up.
+   ============================================================ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.field > label,
+.field-label {
+  color: var(--text);
+  font-weight: 540;
+  font-size: 13.5px;
+  letter-spacing: -0.005em;
+}
+.field-hint {
+  color: var(--text-tertiary);
+  font-size: var(--text-small);
+  line-height: 1.45;
+}
+.field-error {
+  color: var(--critical);
+  font-size: var(--text-small);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+textarea,
+select {
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  width: 100%;
+  min-width: 0;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+  appearance: none;
+}
+textarea {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* Native date/time pickers in dark mode: hint the browser to flip theming */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+.control:hover,
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: var(--border-strong);
+}
+
+.control:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: var(--shadow-focus);
+}
+
+.control:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  background: var(--surface-sunk);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* Error state */
+[aria-invalid="true"],
+.control[aria-invalid="true"] {
+  border-color: var(--critical) !important;
+  box-shadow: 0 0 0 3px rgba(177, 58, 44, 0.15) !important;
+}
+
+/* Native <select> arrow */
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 14px;
+  padding-right: 36px;
+}
+:root[data-theme="dark"] select,
+:root[data-theme="system"] select {
+  /* Arrow inherits currentColor via stroke */
+}
+
+/* Password reveal toggle */
+.pw-wrap {
+  position: relative;
+}
+.pw-wrap input {
+  padding-right: 56px;
+}
+.pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: 500 12px var(--font-body);
+  cursor: pointer;
+}
+.pw-toggle:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+.pw-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Checkbox + radio */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--signal);
+  cursor: pointer;
+}
+.check-label,
+label.check-label,
+.field > label:has(input[type="checkbox"]),
+.field > label:has(input[type="radio"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Search */
+.search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.search-wrap svg {
+  position: absolute;
+  left: 12px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.search-wrap > input,
+.search-wrap > .control {
+  padding-left: 40px;
+}
+
+/* Adornment (unit on the side of a numeric field) */
+.adorned {
+  display: flex;
+  align-items: stretch;
+}
+.adorned input,
+.adorned .control {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: 0;
+}
+.adorned .adorn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border-strong);
+  border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Field error at form level */
+.form-error {
+  background: var(--critical-bg);
+  color: var(--critical-fg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: var(--text-small);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.form-error[hidden] { display: none; }
+
+/* Form layout */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+.form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.form-actions > .btn:first-child:not(.btn-primary) ~ .btn-primary {
+  margin-left: auto;
+}
+
+/* Form grid (used on bounty create) */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-16);
+}
+.form-grid .span-2 { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .form-grid .span-2 { grid-column: auto; }
+}

@@ -13,8 +13,7 @@ from workpeg.ui import (
 from app_shell import AppShell
 from components import EmptyState, ErrorState, LoadingState
 from pages.home import HomePage
-from pages.bounties import BountiesPage
-from pages.bounty import BountyPage
+from pages.services import ServicesPage
 from pages.not_found import NotFoundPage
 
 
@@ -71,8 +70,7 @@ class Main(Router):
         Route("/", Landing),
         Shell(AppShell, "/b/[business_id]", [
             Route("/", HomePage),
-            Route("/bounties", BountiesPage),
-            Route("/bounties/[bounty_id]", BountyPage),
+            Route("/services", ServicesPage),
         ]),
     ]
     not_found = NotFoundPage

@@ -90,6 +90,37 @@ class ErrorState(Component):
         )
 
 
+class BountyRow(Component):
+    """One open bounty from Bounty: title, what it is, reward, due and status."""
+
+    def __init__(self, title, meta, reward, due, status):
+        self.title = title
+        self.meta = meta
+        self.reward = reward
+        self.due = due
+        self.status = status
+
+    def build(self):
+        return Container(
+            Column(
+                Row(
+                    Expanded(
+                        Column(
+                            Text(self.title, weight="semibold"),
+                            Text(self.meta, variant="caption"),
+                            gap=4,
+                        ),
+                    ),
+                    BountyStatusTag(self.status),
+                    align="center", gap=16,
+                ),
+                Text(f"{self.reward} · {self.due}", variant="muted"),
+                gap=8,
+            ),
+            variant="card", padding=24,
+        )
+
+
 class BountyStatusTag(Component):
     """A bounty's status as a labelled, toned Tag.
 
@@ -123,3 +154,25 @@ class SubmissionStatusTag(Component):
             return Tag("Rejected", tone="neutral", dot=True)
         else:
             return Tag("Pending", tone="info", dot=True)
+
+
+class AppointmentStatusTag(Component):
+    """An appointment's status as a labelled, toned Tag.
+
+    Tag(tone=) takes a literal, so each status is its own branch.
+    """
+
+    def __init__(self, status):
+        self.status = status
+
+    def build(self):
+        if self.status == "confirmed":
+            return Tag("Confirmed", tone="success", dot=True)
+        elif self.status == "proposed":
+            return Tag("Awaiting confirmation", tone="info", dot=True)
+        elif self.status == "cancelled":
+            return Tag("Cancelled", tone="neutral", dot=True)
+        elif self.status == "superseded":
+            return Tag("Rescheduled", tone="neutral", dot=True)
+        else:
+            return Tag(self.status, tone="neutral", dot=True)

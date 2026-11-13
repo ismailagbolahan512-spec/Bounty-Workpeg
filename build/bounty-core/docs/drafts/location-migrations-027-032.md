@@ -1,6 +1,7 @@
 # Location migrations: drafts for review (027 to 032)
 
-Status: DRAFT. None of these files is in `migrations/`. None has been applied to any database.
+Status: APPROVED SQL (2026-11-13), applied to a LOCAL SCRATCH database only, 37 rule checks passing
+(scripts/location-schema-test.sql). Not applied to the shared database or production. Not in `migrations/`.
 Each draft is additive. Nothing drops or rewrites an existing object, except the two CHECK
 constraints replaced in 032, which are named below.
 

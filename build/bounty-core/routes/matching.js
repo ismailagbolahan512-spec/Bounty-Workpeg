@@ -53,7 +53,7 @@ router.get('/tasks/:bountyId', authenticate, requireRole('business'), async(req,
 
     const { rows: candidates } = await pool.query(
       `SELECT ${WORKER_COLUMNS} FROM users
-       WHERE role = 'worker' AND discoverable = TRUE AND email_verified_at IS NOT NULL
+       WHERE role = 'worker' AND discoverable = TRUE
        ORDER BY updated_at DESC LIMIT $1`, [CANDIDATE_LIMIT]
     );
     const ids = candidates.map((c) => c.id);

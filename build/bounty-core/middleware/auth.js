@@ -111,7 +111,7 @@ async function authenticate(req, res, next) {
 
         const { rows } = await pool.query(
             `SELECT id, email, name, role, reputation_score, total_earned,
-                    email_verified_at, password_changed_at, tokens_valid_after, is_admin, account_status
+                    password_changed_at, tokens_valid_after, is_admin, account_status
              FROM users WHERE id = $1`, [payload.sub]
         );
         if (rows.length === 0) {

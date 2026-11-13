@@ -12,7 +12,7 @@ const { validateCriteria } = require('../services/criteria');
 const { createNotification } = require('./notifications');
 const { resolveExecution, logEvent, notifyAfterCommit, participantsOf } = require('../services/execution');
 const { catalogue } = require('../services/classification');
-const { canSeeTask } = require('../services/regions');
+const { canSeeTask, validateTaskCurrency } = require('../services/regions');
 const { assertActiveAccount, requireAgreement, canAccessConfidential, assertConfidentialAccess } = require('../services/protection');
 const dbq = (sql, params) => pool.query(sql, params);
 
@@ -190,6 +190,10 @@ router.get('/', optionalAuth, async(req, res, next) => {
         // Build parameterized query
         const conditions = [];
         const params = [];
+
+        // Onsite services are listed on their own page (/api/services), never on the bounty board.
+        // Filter by category so this works whether or not migration 027 has been applied.
+        conditions.push(`b.category <> 'hospitality'`);
 
         if (category !== undefined) {
             conditions.push(`b.category = $${params.length + 1}`);
@@ -424,9 +428,6 @@ router.get('/:id', optionalAuth, async(req, res, next) => {
 
 router.post('/', authenticate, requireRole('business'), async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) {
-            throw httpError(403, 'Verify your email before posting a bounty');
-        }
         await assertActiveAccount(req.user.id);
         await requireAgreement(dbq, req.user.id, 'creator_protection_business');
         const {
@@ -457,6 +458,7 @@ router.post('/', authenticate, requireRole('business'), async(req, res, next) =>
         });
 
         const execution = resolveExecution(body);
+        const currency = validateTaskCurrency(body.currency, undefined);
 
         if (validationErrors.length > 0) {
             throw httpError(400, validationErrors.join('; '));
@@ -484,10 +486,10 @@ router.post('/', authenticate, requireRole('business'), async(req, res, next) =>
          (business_id, title, description, category, difficulty, reward_amount, deadline, submission_type, requirements, acceptance_criteria, completion_checklist,
           execution_mode, industry, job_type, max_workers, winner_limit, independent_target, requires_authorization,
           nda_text, authorization_statement, rules_of_engagement, permitted_targets, prohibited_activities,
-          status, created_at, updated_at, confidential)
+          status, created_at, updated_at, confidential, currency)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
                $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
-               'open', NOW(), NOW(), $24)
+               'open', NOW(), NOW(), $24, $25)
        RETURNING
          id, title, description, category, difficulty, reward_amount, deadline,
          submission_type, requirements, acceptance_criteria, completion_checklist, funding_status, status, created_at, updated_at`, [
@@ -515,6 +517,7 @@ router.post('/', authenticate, requireRole('business'), async(req, res, next) =>
                 execution.permitted_targets,
                 execution.prohibited_activities,
                 (req.body || {}).confidential === true,
+                currency,
             ]
         );
 
@@ -603,7 +606,6 @@ router.patch('/:id/close', authenticate, requireRole('business'), async(req, res
 router.post('/:id/accept', authenticate, requireRole('worker'), async(req, res, next) => {
     const client = await pool.connect();
     try {
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before taking tasks');
         const bountyId = req.params.id;
         if (!UUID_RE_B.test(bountyId)) throw httpError(400, 'Invalid bounty ID');
         const body = req.body || {};

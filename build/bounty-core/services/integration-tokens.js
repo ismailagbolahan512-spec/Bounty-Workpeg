@@ -21,6 +21,10 @@ const SCOPE_ROLES = {
     'applications:write': ['worker'],
     'submissions:write': ['worker'],
     'workspace:read': ['worker', 'business'],
+    // Hospitality services — business-only. The peg on Workpeg reads a business's own
+    // requests, quotes and appointments. No writes yet; sensitive writes will be added
+    // under the confirmation flow once we are ready to post requests from the peg.
+    'services:read': ['business'],
 };
 // Scopes that run only with the user's explicit approval in Bounty (design section 3.4).
 const SENSITIVE_SCOPES = ['bounties:publish', 'applications:write', 'submissions:write'];
@@ -208,9 +212,21 @@ async function consumeConfirmation(client, { confirmationId, tokenId, action, pa
     return rowCount === 1;
 }
 
+// Pending approvals for the user's own tokens: not yet approved, not used, not expired.
+async function listPendingConfirmations(userId) {
+    const { rows } = await pool.query(
+        `SELECT c.id, c.action, c.requested_at, c.expires_at, t.id AS token_id, t.label AS token_label
+         FROM integration_confirmations c JOIN integration_tokens t ON t.id = c.token_id
+         WHERE t.user_id = $1 AND c.approved_at IS NULL AND c.consumed_at IS NULL AND c.expires_at > NOW()
+         ORDER BY c.requested_at DESC`,
+        [userId]
+    );
+    return rows;
+}
+
 module.exports = {
     TOKEN_PREFIX, DEFAULT_DAYS, MAX_DAYS, CONFIRM_MINUTES, SCOPE_ROLES, SENSITIVE_SCOPES,
     hashToken, roleAllows, validateScopes, stableStringify, confirmationHash,
     issueToken, loadActiveToken, listTokens, revokeToken, revokeAllForUser, rotateToken,
-    requestConfirmation, approveConfirmation, consumeConfirmation,
+    requestConfirmation, approveConfirmation, consumeConfirmation, listPendingConfirmations,
 };

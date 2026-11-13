@@ -52,7 +52,6 @@ async function signupVerified(email, role, name) {
 async function signupVerifiedBase(email) {
     await api('POST', '/api/auth/signup', { email, password: 'correct-horse-1', name: 'Lock Test', role: 'worker' });
     await sleep(200);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(email, 'verify?token=') });
 }
 
 (async() => {

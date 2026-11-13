@@ -76,7 +76,6 @@ router.post('/agreements/accept', authenticate, async(req, res, next) => {
     try {
         const { kind, bounty_id } = req.body || {};
         if (!KINDS.includes(kind)) throw httpError(400, 'kind must be a known agreement');
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before accepting agreements');
 
         if (kind === 'creator_protection_business') {
             if (req.user.role !== 'business') throw httpError(403, 'Only businesses accept the Creator Protection Agreement');
@@ -171,7 +170,6 @@ router.post('/bounties/:id/revoke-access', authenticate, requireRole('business')
 // ------------------------------------------------------------ reports (workers and businesses)
 router.post('/reports', authenticate, async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) throw httpError(403, 'Verify your email before filing a report');
         const body = req.body || {};
         if (!REPORT_KINDS.includes(body.kind)) throw httpError(400, 'kind must be copyright_misuse or confidentiality_incident');
         const bountyId = requireUuid(body.bounty_id, 'bounty_id');

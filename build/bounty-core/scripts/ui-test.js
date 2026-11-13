@@ -1,4 +1,4 @@
-// scripts/ui-test.js — drives the real UI (signup, verify, reset, reviews, reports, public pages).
+// scripts/ui-test.js — drives the real UI (signup, reset, reviews, reports, public pages).
 // Usage: BASE=http://localhost:3100 LOG_FILE=/path/to/server.log node scripts/ui-test.js
 // Needs: npm i -D playwright && npx playwright install chromium (or set PLAYWRIGHT_BROWSERS_PATH).
 // The server must run WITHOUT RESEND_API_KEY so emails are written to the log.
@@ -70,30 +70,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.fill('#auth-email', workerEmail);
     await page.fill('#auth-password', PASS);
     await page.click('#auth-submit');
-    await page.waitForSelector('#verify-banner', { timeout: 10000 }).catch(() => null);
-    ok('signup in browser shows verification banner', await page.$('#verify-banner') !== null);
     await sleep(400);
 
     // Dismiss the existing worker onboarding popup, as a real user would
     await page.waitForSelector('#onboarding-modal', { timeout: 5000 }).catch(() => null);
     if (await page.$('#onboarding-modal')) { await page.click('#onboarding-modal button:has-text("Skip")'); await sleep(300); }
 
-    // Resend button works
-    await page.click('#resend-verify');
-    await page.waitForFunction(() => /Verification email sent|already verified/.test(document.getElementById('toast').textContent), null, { timeout: 5000 }).catch(() => null);
-    ok('resend verification shows confirmation toast', /Verification email sent/.test(await page.textContent('#toast')));
 
-    // ---------- 2. Confirm email through the link
-    await sleep(400);
-    const verifyToken = tokenFromLog(workerEmail, 'verify?token=');
-    ok('verification email reached the log', !!verifyToken);
-    await page.goto(BASE + '/#/verify?token=' + verifyToken);
-    await page.waitForSelector('text=Email confirmed', { timeout: 8000 }).catch(() => null);
-    ok('verification link shows confirmed page', (await page.textContent('#app')).includes('Email confirmed'));
-    await sleep(300);
-    await page.goto(BASE + '/#/dashboard');
-    await sleep(800);
-    ok('banner is gone after verifying', await page.$('#verify-banner') === null);
 
     // ---------- 3. Forgot and reset password through the UI
     const forgotPage = await newPage();
@@ -123,8 +106,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const biz = await api('POST', '/api/auth/signup', { email: bizEmail, password: PASS, name: 'UI Biz', role: 'business' });
     await acceptFor(biz.body && biz.body.role, biz.body && biz.body.token);
     await sleep(300);
-    const bizToken = tokenFromLog(bizEmail, 'verify?token=');
-    await api('POST', '/api/auth/verify', { token: bizToken });
     const bizLogin = await api('POST', '/api/auth/signin', { email: bizEmail, password: PASS });
     await acceptFor(bizLogin.body && bizLogin.body.role, bizLogin.body && bizLogin.body.token);
     const bounty = await api('POST', '/api/bounties', {
@@ -184,7 +165,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const adminEmailUi = 'ui-admin+' + stamp + '@test.com';
     await api('POST', '/api/auth/signup', { email: adminEmailUi, password: PASS, name: 'UI Admin', role: 'worker' });
     await sleep(300);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(adminEmailUi, 'verify?token=') });
     const { pool } = require('../db');
     await pool.query('UPDATE users SET is_admin = TRUE, onboarding_done = TRUE WHERE email = $1', [adminEmailUi]);
     const adminLoginUi = await api('POST', '/api/auth/signin', { email: adminEmailUi, password: PASS });
@@ -229,6 +209,5 @@ async function acceptFor(role, token) {
     const kind = { business: 'creator_protection_business', worker: 'worker_submission_ip' }[role];
     if (!kind || !token) return;
     const r = await api('POST', '/api/protection/agreements/accept', { kind }, token);
-    // Unverified accounts are refused here by design; ignore so those tests can check the refusal.
     void r;
 }

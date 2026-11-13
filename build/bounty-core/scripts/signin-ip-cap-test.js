@@ -40,7 +40,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const email = `capuser+${stamp}@test.com`;
     await api('POST', '/api/auth/signup', { email, password: 'correct-horse-1', name: 'Cap Test', role: 'worker' });
     await sleep(200);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(email, 'verify?token=') });
 
     const attacker = '203.0.113.' + (stamp % 200 + 1);
     let firstFive = true;

@@ -37,7 +37,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const r = await api('POST', '/api/auth/signup', { email, password: 'password123', name: 'AI UI Biz', role: 'business' });
     await acceptFor(r.body && r.body.role, r.body && r.body.token);
     await sleep(250);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(email, 'verify?token=') });
     const biz = { token: r.body.token, id: r.body.id, email, name: 'AI UI Biz', role: 'business' };
 
     const browser = await chromium.launch();
@@ -90,6 +89,5 @@ async function acceptFor(role, token) {
     const kind = { business: 'creator_protection_business', worker: 'worker_submission_ip' }[role];
     if (!kind || !token) return;
     const r = await api('POST', '/api/protection/agreements/accept', { kind }, token);
-    // Unverified accounts are refused here by design; ignore so those tests can check the refusal.
     void r;
 }

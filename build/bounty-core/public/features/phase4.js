@@ -273,7 +273,7 @@
             app().innerHTML = '<section class="page"><div class="container narrow">' +
                 '<div class="page-head"><div><p class="eyebrow">Global access</p><h1>Opportunities</h1></div></div>' +
                 '<section class="detail-section"><h2>Your region</h2>' + regionBox + '</section>' +
-                '<section class="detail-section"><h2>Currencies</h2><p class="small muted">Bounty states clearly which currencies it supports. Other currencies are not supported yet.</p>' + currencies + '</section>' +
+                '<section class="detail-section"><h2>Currencies</h2><p class="small muted">Each region prices in its own currency. Payouts are not confirmed yet for any currency.</p>' + currencies + '</section>' +
                 '<section class="detail-section"><h2>Open tasks for you</h2><p class="small muted">Ranked by languages, time zone overlap, skills and availability. Location is not used. Region limits are applied.</p>' + rows + '</section>' +
                 '</div></section>';
         }).catch(function(error) { fail(error, 'Could not load opportunities.'); });

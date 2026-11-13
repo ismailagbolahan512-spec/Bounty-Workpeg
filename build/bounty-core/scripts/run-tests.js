@@ -35,6 +35,7 @@ const TEST_AI_MODE = { rules: 'rules', off: 'unconfigured', mock: 'mock' };
 // mock port, so it must run before the shared mock is started), then with the shared mock.
 const SUITES = [
     { name: 'smoke', file: 'scripts/smoke-test.js', ai: 'rules' },
+    { name: 'hospitality', file: 'scripts/hospitality-test.js', ai: 'rules' },
     { name: 'signin-limit', file: 'scripts/signin-limit-test.js', ai: 'rules' },
     { name: 'signin-ip-cap', file: 'scripts/signin-ip-cap-test.js', ai: 'rules', server: { AUTH_IP_LIMIT: '5' } },
     { name: 'workspace', file: 'scripts/workspace-test.js', ai: 'rules' },

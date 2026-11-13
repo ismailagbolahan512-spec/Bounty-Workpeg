@@ -60,9 +60,6 @@ const APPROVABLE_BOUNTY_STATUSES = ['open', 'in_progress', 'under_review'];
 router.post('/', authenticate, requireRole('worker'), async(req, res, next) => {
     const client = await pool.connect();
     try {
-        if (!req.user.email_verified_at) {
-            throw httpError(403, 'Verify your email before submitting work');
-        }
         const { bounty_id, title, description, github_link, notes_to_reviewer } = req.body || {};
 
         const bountyId = typeof bounty_id === 'string' ? bounty_id.trim() : '';

@@ -1,0 +1,145 @@
+/* ============================================================
+   Base typography, body, links, selection
+   ============================================================ */
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  background: var(--ink-canvas);
+  font-feature-settings: 'ss01' on, 'cv11' on;
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  letter-spacing: var(--track-tight);
+  line-height: var(--lh-snug);
+  font-weight: 650;
+}
+
+h1 { font-size: var(--text-h1); line-height: var(--lh-tight); font-weight: 700; }
+h2 { font-size: var(--text-h2); }
+h3 { font-size: var(--text-h3); }
+h4 { font-size: var(--text-lg); font-weight: 600; }
+
+.display {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: var(--track-tighter);
+  color: var(--text-primary);
+}
+
+p { color: var(--text-primary); }
+
+small, .meta, .caption {
+  font-size: var(--text-meta);
+  color: var(--text-secondary);
+  line-height: var(--lh-normal);
+}
+
+.muted { color: var(--text-secondary); }
+.tertiary { color: var(--text-tertiary); }
+.subtle { color: var(--text-tertiary); }
+
+.num,
+.numeric {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: var(--signal);
+  text-decoration: none;
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+a:hover { color: var(--signal-hover); text-decoration: underline; }
+
+code, pre {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--ink-raised);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+pre { padding: 12px 14px; overflow-x: auto; }
+pre code { background: transparent; border: 0; padding: 0; }
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--space-6) 0;
+}
+
+::selection {
+  background: var(--signal-soft);
+  color: var(--text-primary);
+}
+
+/* Scrollbars — restrained */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); background-clip: padding-box; border: 2px solid transparent; }
+
+/* --- Common utilities used across pages --- */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  display: inline-block;
+}
+
+.lead {
+  font-size: var(--text-lg);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+.stack { display: flex; flex-direction: column; }
+.stack-sm { display: flex; flex-direction: column; gap: var(--space-3); }
+.stack-md { display: flex; flex-direction: column; gap: var(--space-5); }
+.stack-lg { display: flex; flex-direction: column; gap: var(--space-7); }
+
+.row { display: flex; align-items: center; }
+.row-sm { display: flex; align-items: center; gap: var(--space-3); }
+.row-md { display: flex; align-items: center; gap: var(--space-5); }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); }
+
+/* Checkmark used by legacy auth-benefit list */
+.checkmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--signal-soft);
+  color: var(--signal);
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}

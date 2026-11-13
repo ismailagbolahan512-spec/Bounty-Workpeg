@@ -20,9 +20,6 @@ const REASONS = ['unpaid', 'unfair_rejection', 'spam', 'abusive', 'other'];
 // ------------------------------------------------ POST /api/reports
 router.post('/', authenticate, async(req, res, next) => {
     try {
-        if (!req.user.email_verified_at) {
-            throw httpError(403, 'Verify your email before reporting a bounty');
-        }
         const { bounty_id, reason, details } = req.body || {};
 
         const bountyId = typeof bounty_id === 'string' ? bounty_id.trim() : '';

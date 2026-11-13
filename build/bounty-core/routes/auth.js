@@ -1,23 +1,23 @@
-// routes/auth.js — signup, signin, email verification, password reset
+// routes/auth.js — signup, signin, sign-out, password reset
 //
 // POST /api/auth/signup
 //   Body:     { "email": "a@b.com", "password": "secret123", "name": "Ada", "role": "worker" }
-//   Response: { "id", "email", "name", "role", "email_verified": false, "token": "<jwt>" }
-//   Sends a verification email (signup still succeeds if the email cannot be sent).
+//   Response: { "id", "email", "name", "role", "is_admin", "token": "<jwt>" }
 //
 // POST /api/auth/signin
 //   Body:     { "email": "a@b.com", "password": "secret123" }
 //   Response: same shape as signup.
 //
-// POST /api/auth/verify                 Body: { "token": "<from email>" }
-// POST /api/auth/resend-verification    (signed in) sends a new verification email
+// POST /api/auth/logout
 // POST /api/auth/forgot                 Body: { "email": "a@b.com" }  always returns the same message
 // POST /api/auth/reset                  Body: { "token": "<from email>", "password": "newpass123" }
+//
+// Email verification has been removed: accounts are not checked for a confirmed email address.
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { signToken, setSessionCookie, clearSessionCookie, verifyToken, readSessionToken, httpError, authenticate } = require('../middleware/auth');
+const { signToken, setSessionCookie, clearSessionCookie, verifyToken, readSessionToken, httpError } = require('../middleware/auth');
 const { sendEmail, appUrl } = require('../services/email');
 const { createAuthToken, consumeAuthToken } = require('../services/tokens');
 const { lockedSeconds, recordFailure, clearFailures } = require('../middleware/signin-limit');
@@ -31,16 +31,7 @@ const BCRYPT_ROUNDS = 12;
 const GENERIC_FORGOT = 'If an account exists for that email, a reset link has been sent.';
 
 function publicUser(u) {
-    return { id: u.id, email: u.email, name: u.name, role: u.role, email_verified: !!u.email_verified, is_admin: u.is_admin === true };
-}
-
-async function sendVerificationEmail(userId, email) {
-    const raw = await createAuthToken(userId, 'verify_email');
-    await sendEmail({
-        to: email,
-        subject: 'Confirm your Bounty email',
-        text: `Welcome to Bounty.\n\nConfirm your email address by opening this link:\n${appUrl()}/#/verify?token=${raw}\n\nThe link expires in 24 hours.`,
-    });
+    return { id: u.id, email: u.email, name: u.name, role: u.role, is_admin: u.is_admin === true };
 }
 
 // Shared rule for new passwords (sign-up and reset). bcrypt only uses the first 72 bytes, so a
@@ -111,14 +102,9 @@ router.post('/signup', async(req, res, next) => {
             throw err;
         }
 
-        // Best effort: a mail failure must not block signup. The user can resend from the app.
-        sendVerificationEmail(user.id, user.email).catch((err) => {
-            console.error('✗ Verification email failed:', err.message);
-        });
-
         const token = signToken(user);
         setSessionCookie(res, token);
-        res.status(201).json({...publicUser({...user, email_verified: false }), token });
+        res.status(201).json({ ...publicUser({ ...user, is_admin: false }), token });
     } catch (err) {
         next(err);
     }
@@ -140,7 +126,7 @@ router.post('/signin', async(req, res, next) => {
         }
 
         const { rows } = await pool.query(
-            `SELECT id, email, name, role, password_hash, (email_verified_at IS NOT NULL) AS email_verified, is_admin
+            `SELECT id, email, name, role, password_hash, is_admin
              FROM users WHERE email = $1`, [email.trim().toLowerCase()]
         );
 
@@ -161,37 +147,7 @@ router.post('/signin', async(req, res, next) => {
 
         const token = signToken(rows[0]);
         setSessionCookie(res, token);
-        res.json({...publicUser(rows[0]), token });
-    } catch (err) {
-        next(err);
-    }
-});
-
-// ------------------------------------------------ POST /verify
-router.post('/verify', async(req, res, next) => {
-    try {
-        const userId = await consumeAuthToken(req.body && req.body.token, 'verify_email');
-        if (!userId) throw httpError(400, 'This verification link is invalid or has expired.');
-
-        await pool.query(
-            `UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW()
-             WHERE id = $1`, [userId]
-        );
-        res.json({ ok: true });
-    } catch (err) {
-        next(err);
-    }
-});
-
-// ------------------------------------------ POST /resend-verification
-router.post('/resend-verification', authenticate, async(req, res, next) => {
-    try {
-        if (req.user.email_verified_at) {
-            return res.json({ ok: true, already_verified: true });
-        }
-        // Here a failure is shown to the user, so they know the email did not go out.
-        await sendVerificationEmail(req.user.id, req.user.email);
-        res.json({ ok: true });
+        res.json({ ...publicUser(rows[0]), token });
     } catch (err) {
         next(err);
     }

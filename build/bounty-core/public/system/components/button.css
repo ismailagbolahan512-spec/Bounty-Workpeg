@@ -1,0 +1,197 @@
+/* ============================================================
+   Button — one base, three intents (primary, secondary, ghost),
+   three sizes, loading and disabled states.
+   Overrides the legacy .btn rules in bounty.css.
+   ============================================================ */
+
+.btn {
+  --btn-bg:       var(--surface);
+  --btn-fg:       var(--text);
+  --btn-border:   var(--border-strong);
+  --btn-hover-bg: var(--surface-sunk);
+  --btn-pad-y:    10px;
+  --btn-pad-x:    16px;
+  --btn-font:     14px;
+  --btn-weight:   550;
+  --btn-radius:   var(--radius-sm);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: var(--btn-pad-y) var(--btn-pad-x);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--btn-radius);
+  font: var(--btn-weight) var(--btn-font) / 1 var(--font-body);
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform 60ms var(--ease-out);
+  /* reset for <a class="btn"> */
+  background-image: none;
+  box-shadow: none;
+}
+
+.btn:hover {
+  background: var(--btn-hover-bg);
+  color: var(--btn-fg);
+  text-decoration: none;
+  transform: none;
+  box-shadow: none;
+}
+.btn:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(1px);
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ---------- Primary: the one amber action ---------- */
+.btn.btn-primary,
+.btn-primary {
+  --btn-bg:       var(--signal);
+  --btn-fg:       var(--signal-fg);
+  --btn-border:   transparent;
+  --btn-hover-bg: var(--signal-hover);
+  /* kill the old linear-gradient */
+  background-image: none !important;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  border-color: var(--btn-border);
+  font-weight: 600;
+}
+.btn.btn-primary:hover,
+.btn-primary:hover {
+  background: var(--signal-hover);
+  color: var(--signal-fg);
+  border-color: transparent;
+}
+.btn.btn-primary:active,
+.btn-primary:active {
+  background: var(--signal-active);
+}
+
+/* ---------- Secondary / default (already the base) ---------- */
+
+/* ---------- Ghost (text-only with hover tint) ---------- */
+.btn-ghost,
+.btn.btn-ghost,
+.btn-quiet,
+.btn.btn-quiet,
+.btn-outline-light {
+  --btn-bg: transparent;
+  --btn-fg: var(--text);
+  --btn-border: transparent;
+  --btn-hover-bg: var(--surface-sunk);
+  background-image: none !important;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+}
+.btn-ghost:hover,
+.btn-quiet:hover,
+.btn-outline-light:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+/* ---------- Danger (destructive) ---------- */
+.btn-danger,
+.btn.btn-danger {
+  --btn-bg: transparent;
+  --btn-fg: var(--critical);
+  --btn-border: var(--critical);
+  --btn-hover-bg: var(--critical-bg);
+  background-image: none !important;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  border-color: var(--btn-border);
+}
+.btn-danger:hover {
+  background: var(--critical-bg);
+  color: var(--critical);
+}
+
+/* ---------- Sizes ---------- */
+.btn-sm {
+  --btn-pad-y: 7px;
+  --btn-pad-x: 12px;
+  --btn-font:  13px;
+}
+.btn-lg {
+  --btn-pad-y: 13px;
+  --btn-pad-x: 22px;
+  --btn-font:  15px;
+}
+
+/* Block button (full width) */
+.btn-block { width: 100%; }
+
+/* Icon-only button is square */
+.btn.icon-only {
+  padding: 0;
+  width: 36px;
+  height: 36px;
+}
+.btn-sm.icon-only { width: 30px; height: 30px; }
+.btn-lg.icon-only { width: 44px; height: 44px; }
+
+/* Loading */
+.btn[aria-busy="true"] {
+  position: relative;
+  color: transparent;
+  pointer-events: none;
+}
+.btn[aria-busy="true"]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.75;
+  color: var(--signal-fg);
+  animation: btn-spin 0.6s linear infinite;
+}
+.btn-ghost[aria-busy="true"]::after,
+.btn-quiet[aria-busy="true"]::after { color: var(--text); }
+.btn-danger[aria-busy="true"]::after { color: var(--critical); }
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+
+/* An inline chevron / arrow inside a button sits right */
+.btn svg {
+  flex: none;
+  color: currentColor;
+}
+
+/* Group — joined buttons share rounded corners */
+.btn-group {
+  display: inline-flex;
+}
+.btn-group .btn:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -1px;
+}
+.btn-group .btn:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}

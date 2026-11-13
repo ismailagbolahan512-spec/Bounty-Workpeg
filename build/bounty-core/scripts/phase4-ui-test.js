@@ -47,7 +47,6 @@ async function verifiedUser(email, role, name) {
     await acceptFor(r.body && r.body.role, r.body && r.body.token);
     if (r.status !== 201) throw new Error('signup failed: ' + JSON.stringify(r.body));
     await sleep(200);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(email, 'verify?token=') });
     const s = await api('POST', '/api/auth/signin', { email, password: 'password123' });
     await acceptFor(s.body && s.body.role, s.body && s.body.token);
     return { token: s.body.token, id: s.body.id, user: { id: s.body.id, email, name, role, email_verified: true } };
@@ -120,7 +119,7 @@ async function verifiedUser(email, role, name) {
     await wp.waitForSelector('h1:has-text("Opportunities")', { timeout: 10000 }).catch(() => null);
     ok('the worker sees their region', /Nigeria/.test(await wp.textContent('section.detail-section')));
     const currencyText = await wp.textContent('section:has(h2:text-is("Currencies"))');
-    ok('the currency section lists the naira as the supported currency', /Nigerian naira/.test(currencyText) && /NGN/.test(currencyText) && /not supported yet/.test(currencyText));
+    ok('the currency section lists the naira and says payouts are not confirmed', /Nigerian naira/.test(currencyText) && /NGN/.test(currencyText) && /Payouts are not confirmed yet/.test(currencyText));
     ok('the payout status is shown as not confirmed', /Payout methods for this region are not confirmed yet/.test(await wp.textContent('body')));
 
     // ---------------------------------------------------------------- business: task visibility
@@ -156,6 +155,5 @@ async function acceptFor(role, token) {
     const kind = { business: 'creator_protection_business', worker: 'worker_submission_ip' }[role];
     if (!kind || !token) return;
     const r = await api('POST', '/api/protection/agreements/accept', { kind }, token);
-    // Unverified accounts are refused here by design; ignore so those tests can check the refusal.
     void r;
 }

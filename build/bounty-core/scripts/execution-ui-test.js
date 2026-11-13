@@ -47,7 +47,6 @@ async function verifiedUser(email, role, name) {
     await acceptFor(r.body && r.body.role, r.body && r.body.token);
     if (r.status !== 201) throw new Error('signup failed: ' + JSON.stringify(r.body));
     await sleep(200);
-    await api('POST', '/api/auth/verify', { token: tokenFromLog(email, 'verify?token=') });
     const signin = await api('POST', '/api/auth/signin', { email, password: 'password123' });
     await acceptFor(signin.body && signin.body.role, signin.body && signin.body.token);
     return { token: signin.body.token, user: { id: signin.body.id, email, name, role, email_verified: true } };
@@ -169,6 +168,5 @@ async function acceptFor(role, token) {
     const kind = { business: 'creator_protection_business', worker: 'worker_submission_ip' }[role];
     if (!kind || !token) return;
     const r = await api('POST', '/api/protection/agreements/accept', { kind }, token);
-    // Unverified accounts are refused here by design; ignore so those tests can check the refusal.
     void r;
 }

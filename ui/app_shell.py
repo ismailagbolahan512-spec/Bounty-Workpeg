@@ -15,7 +15,7 @@ class AppShell(Shell):
         return Scaffold(
             NavSection(
                 "Work",
-                NavItem("Bounties", biz_url("/bounties"), icon="clipboard"),
+                NavItem("Services", biz_url("/services"), icon="tool"),
             ),
             fixed=NavFixed(NavItem("Home", biz_url("/"), icon="home")),
             top_nav=Text(store.page_title, weight="semibold"),

@@ -1,0 +1,216 @@
+// scripts/hospitality-unit-test.js — pure rules for hospitality services. No server, no database.
+// Run: npm run test:hospitality-unit
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const hs = require('../services/hospitality');
+const regions = require('../services/regions');
+
+const NOW = new Date('2026-11-13T12:00:00Z');
+
+test('a local time in Lagos becomes UTC once (UTC+1, no daylight saving)', () => {
+    assert.equal(hs.localToUtc('2026-11-14T14:00', 'Africa/Lagos').toISOString(), '2026-11-14T13:00:00.000Z');
+});
+
+test('a local time in New York follows the offset of that date (November is EST, UTC-5)', () => {
+    assert.equal(hs.localToUtc('2026-11-14T14:00', 'America/New_York').toISOString(), '2026-11-14T19:00:00.000Z');
+});
+
+test('a local time in London in summer is UTC+1, in winter UTC+0', () => {
+    assert.equal(hs.localToUtc('2026-07-01T09:00', 'Europe/London').toISOString(), '2026-07-01T08:00:00.000Z');
+    assert.equal(hs.localToUtc('2026-12-01T09:00', 'Europe/London').toISOString(), '2026-12-01T09:00:00.000Z');
+});
+
+test('a time that is not in the expected shape is refused', () => {
+    assert.throws(() => hs.localToUtc('14 Nov 2pm', 'Africa/Lagos'), /look like/);
+    assert.throws(() => hs.localToUtc(undefined, 'Africa/Lagos'), /look like/);
+});
+
+test('a local time reads back for people with the zone named', () => {
+    const text = hs.formatLocal(new Date('2026-11-14T13:00:00Z'), 'Africa/Lagos');
+    assert.match(text, /2:00/);
+    assert.match(text, /\(Africa\/Lagos\)$/);
+});
+
+const goodRequest = {
+    title: 'Emergency clean linen',
+    problem: 'We are low on clean bedsheets and towels for tonight.',
+    needs: '40 sheets and 60 towels, collected and returned before 2 PM.',
+    price: '25000',
+    region: 'NG',
+    address: '12 Adeola Odeku Street, Victoria Island',
+    area_label: 'Victoria Island',
+    deadline: '2026-11-14T14:00',
+    industry: 'hotel',
+    services: ['Linen laundry and change'],
+};
+
+test('a good request is accepted, priced in the region currency, on the region zone', () => {
+    const r = hs.validateRequest(goodRequest, NOW);
+    assert.equal(r.currency, 'NGN');
+    assert.equal(r.timeZone, 'Africa/Lagos');
+    assert.equal(r.price, 25000);
+    assert.equal(r.deadline.toISOString(), '2026-11-14T13:00:00.000Z');
+});
+
+test('a price is refused when it is not a positive number', () => {
+    assert.throws(() => hs.validateRequest({ ...goodRequest, price: '0' }, NOW), /Price/);
+    assert.throws(() => hs.validateRequest({ ...goodRequest, price: 'lots' }, NOW), /Price/);
+    assert.throws(() => hs.validateRequest({ ...goodRequest, price: -5 }, NOW), /Price/);
+});
+
+test('the description of the problem and of the needs must not be empty', () => {
+    assert.throws(() => hs.validateRequest({ ...goodRequest, problem: 'short' }, NOW), /Describe what is wrong/);
+    assert.throws(() => hs.validateRequest({ ...goodRequest, needs: '' }, NOW), /Describe what is needed/);
+});
+
+test('a region outside the supported list is refused', () => {
+    assert.throws(() => hs.validateRequest({ ...goodRequest, region: 'ZZ' }, NOW), /region/);
+});
+
+test('a currency from another region is refused for this location', () => {
+    assert.throws(() => hs.validateRequest({ ...goodRequest, currency: 'GBP' }, NOW), /not used/);
+});
+
+test('a multi-zone region needs one of its zones named', () => {
+    const us = { ...goodRequest, region: 'US', address: '1 Main Street, Springfield', area_label: 'Springfield', deadline: '2026-11-14T14:00' };
+    assert.throws(() => hs.validateRequest(us, NOW), /Choose the time zone/);
+    const ok = hs.validateRequest({ ...us, time_zone: 'America/Chicago' }, NOW);
+    assert.equal(ok.currency, 'USD');
+    assert.equal(ok.deadline.toISOString(), '2026-11-14T20:00:00.000Z');
+});
+
+test('a single-zone region refuses a different zone from the person', () => {
+    assert.throws(() => regions.resolveTimeZone('NG', 'Europe/London'), /is Africa\/Lagos/);
+    assert.equal(regions.resolveTimeZone('NG', 'Africa/Lagos'), 'Africa/Lagos');
+    assert.equal(regions.resolveTimeZone('NG'), 'Africa/Lagos');
+});
+
+test('a deadline under an hour away or over 90 days away is refused', () => {
+    assert.throws(() => hs.validateRequest({ ...goodRequest, deadline: '2026-11-13T12:30' }, NOW), /at least 1 hour/);
+    assert.throws(() => hs.validateRequest({ ...goodRequest, deadline: '2027-06-01T10:00' }, NOW), /within 90 days/);
+});
+
+test('a quote needs a positive amount and an optional short note', () => {
+    assert.deepEqual(hs.validateQuote({ amount: 25000 }), { amount: 25000, note: null });
+    assert.equal(hs.validateQuote({ amount: 1, note: '  can do it  ' }).note, 'can do it');
+    assert.throws(() => hs.validateQuote({ amount: 0 }), /Price/);
+});
+
+test('a provider service area is a free-text label, up to 240 characters', () => {
+    assert.equal(hs.validateServiceArea(''), null);
+    assert.equal(hs.validateServiceArea(null), null);
+    assert.equal(hs.validateServiceArea('  Victoria  Island,  Lekki '), 'Victoria Island, Lekki');
+    assert.throws(() => hs.validateServiceArea('x'.repeat(300)), /240/);
+    assert.throws(() => hs.validateServiceArea({}), /text/);
+});
+
+test('the address is visible to the business, and to the provider only after both confirm', () => {
+    const request = { business_id: 'biz' };
+    const confirmed = {
+        status: 'confirmed', provider_id: 'pro', provider_confirmed_at: new Date(), business_confirmed_at: new Date(),
+    };
+    assert.equal(hs.canSeeAddress({ id: 'biz' }, request, null), true);
+    assert.equal(hs.canSeeAddress({ id: 'pro' }, request, confirmed), true);
+    assert.equal(hs.canSeeAddress({ id: 'pro' }, request, { ...confirmed, status: 'proposed' }), false);
+    assert.equal(hs.canSeeAddress({ id: 'pro' }, request, { ...confirmed, business_confirmed_at: null }), false);
+    assert.equal(hs.canSeeAddress({ id: 'other' }, request, confirmed), false);
+});
+
+test('a visit window must end after it starts, fit in 24 hours and end before the deadline', () => {
+    const deadline = new Date('2026-11-14T13:00:00Z');
+    assert.throws(() => hs.validateWindow('2026-11-14T10:00', '2026-11-14T09:00', 'Africa/Lagos', deadline), /end after/);
+    assert.throws(() => hs.validateWindow('2026-11-13T09:00', '2026-11-15T09:00', 'Africa/Lagos', null), /24 hours/);
+    assert.throws(() => hs.validateWindow('2026-11-14T10:00', '2026-11-14T15:00', 'Africa/Lagos', deadline), /before the request deadline/);
+    const ok = hs.validateWindow('2026-11-14T09:00', '2026-11-14T11:00', 'Africa/Lagos', deadline);
+    assert.equal(ok.starts.toISOString(), '2026-11-14T08:00:00.000Z');
+});
+
+test('a status change is allowed only along the appointment path', () => {
+    assert.doesNotThrow(() => hs.assertTransition('proposed', 'confirmed'));
+    assert.doesNotThrow(() => hs.assertTransition('confirmed', 'superseded'));
+    assert.throws(() => hs.assertTransition('superseded', 'confirmed'), /cannot become/);
+    assert.throws(() => hs.assertTransition('cancelled', 'proposed'), /cannot become/);
+});
+
+test('chat is closed until the appointment is confirmed', () => {
+    const msg = { kind: 'message', body: 'hello', status_code: null };
+    assert.throws(() => hs.assertCanChat({ status: 'proposed' }, 'provider', msg), /Chat opens/);
+    assert.doesNotThrow(() => hs.assertCanChat({ status: 'confirmed' }, 'business', msg));
+});
+
+test('only the provider sends status lines, and only from the list', () => {
+    const appt = { status: 'confirmed' };
+    assert.throws(() => hs.assertCanChat(appt, 'business', { kind: 'status', status_code: 'on_the_way' }), /Only the provider/);
+    assert.doesNotThrow(() => hs.assertCanChat(appt, 'provider', { kind: 'status', status_code: 'on_the_way' }));
+    assert.throws(() => hs.validateChatInput({ kind: 'status', status_code: 'teleported' }), /Choose a status/);
+});
+
+test('a non-party is refused in chat', () => {
+    assert.throws(() => hs.assertCanChat({ status: 'confirmed' }, null, { kind: 'message', body: 'hi' }), /Only the provider and the business/);
+});
+
+test('a chat message is 1 to 1000 characters', () => {
+    assert.throws(() => hs.validateChatInput({ kind: 'message', body: '   ' }), /Message/);
+    assert.throws(() => hs.validateChatInput({ kind: 'message', body: 'x'.repeat(1001) }), /Message/);
+    assert.equal(hs.validateChatInput({ kind: 'message', body: ' on my way ' }).body, 'on my way');
+});
+
+test('a street address typed into chat is flagged, and ordinary chat is not', () => {
+    assert.equal(hs.looksLikeAddress('come to 12 Adeola Odeku Street, the blue gate'), true);
+    assert.equal(hs.looksLikeAddress('12B Ajose Adeogun Street'), true);
+    assert.equal(hs.looksLikeAddress('on my way now'), false);
+    assert.equal(hs.looksLikeAddress('I will be there by 2pm'), false);
+});
+
+test('currency and region helpers agree with the region table', () => {
+    assert.equal(regions.currencyForRegion('GB'), 'GBP');
+    assert.equal(regions.currencyForRegion('DE'), 'EUR');
+    assert.equal(regions.currencyForRegion('ZZ'), null);
+    assert.equal(regions.validateTaskCurrency(undefined, []), 'NGN');
+    assert.throws(() => regions.validateTaskCurrency('ngn', []), /three-letter/);
+    assert.throws(() => regions.validateTaskCurrency('XYZ', []), /not supported/);
+});
+
+test('the industry catalogue lists services, and a typed service is accepted with a catalogue one', () => {
+    const cat = require('../services/hospitality-catalogue');
+    assert.equal(cat.validIndustry('hotel'), true);
+    assert.equal(cat.validIndustry('space_station'), false);
+    assert.equal(cat.industryFor('other').services.length, 0);
+    const labels = cat.validateServiceLabels(['Pest control', '  Fumigate the kitchen  ', 'pest CONTROL']);
+    assert.deepEqual(labels, ['Pest control', 'Fumigate the kitchen']);
+    assert.throws(() => cat.validateServiceLabels([]), /at least one/);
+    assert.throws(() => cat.validateServiceLabels(['x']), /2 to 120/);
+    assert.throws(() => cat.validateServiceLabels(Array.from({ length: 11 }, (_, i) => 'Service ' + i)), /up to 10/);
+});
+
+test('a request must name an industry and at least one service', () => {
+    assert.throws(() => hs.validateRequest({ ...goodRequest, industry: undefined }, NOW), /industry/);
+    assert.throws(() => hs.validateRequest({ ...goodRequest, services: [] }, NOW), /at least one/);
+    assert.equal(hs.validateRequest(goodRequest, NOW).serviceLabels[0], 'Linen laundry and change');
+});
+
+test('a worker chooses on-site, remote or both, and at least one', () => {
+    assert.deepEqual(hs.validateWorkModes(['remote', 'onsite']), ['onsite', 'remote']);
+    assert.deepEqual(hs.validateWorkModes(['onsite']), ['onsite']);
+    assert.throws(() => hs.validateWorkModes([]), /on-site, remote or both/);
+    assert.throws(() => hs.validateWorkModes(['flying']), /on-site, remote or both/);
+    assert.throws(() => hs.validateWorkModes('onsite'), /on-site, remote or both/);
+});
+
+test('hours must look like 09:00', () => {
+    assert.equal(hs.validateClock('09:30', 'Start'), 570);
+    assert.throws(() => hs.validateClock('9am', 'Start'), /24-hour/);
+    assert.throws(() => hs.validateClock('25:00', 'Start'), /24-hour/);
+});
+
+test('a visit must fit inside the hours a provider gave, in the provider time zone', () => {
+    // 09:00 to 12:00 Lagos, inside 08:00 to 18:00
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T08:00:00Z'), new Date('2026-11-14T11:00:00Z'), 'Africa/Lagos', '08:00', '18:00'), true);
+    // 17:00 to 19:00 Lagos runs past 18:00
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T16:00:00Z'), new Date('2026-11-14T18:00:00Z'), 'Africa/Lagos', '08:00', '18:00'), false);
+    // hours that run past midnight: 22:00 to 06:00 Lagos; a visit at 23:00 for 2 hours fits
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T22:00:00Z'), new Date('2026-11-15T00:00:00Z'), 'Africa/Lagos', '22:00', '06:00'), true);
+    // a visit starting at 05:30 for an hour runs past 06:00
+    assert.equal(hs.visitFitsHours(new Date('2026-11-14T04:30:00Z'), new Date('2026-11-14T05:30:00Z'), 'Africa/Lagos', '22:00', '06:00'), false);
+});
+
