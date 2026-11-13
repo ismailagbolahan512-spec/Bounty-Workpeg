@@ -9,17 +9,9 @@
     <meta name="description" content="Bounty — a marketplace for real work. Businesses post tasks, workers prove their ability by doing them.">
     <title>Bounty — Work that proves what you can do</title>
 
-    <!-- Pre-paint theme application, so there is no flash of wrong scheme on reload. -->
-    <script>
-        (function () {
-            try {
-                var saved = localStorage.getItem('bounty_theme');
-                if (saved === 'light' || saved === 'dark') {
-                    document.documentElement.setAttribute('data-theme', saved);
-                }
-            } catch (e) { /* storage disabled — fall through to system */ }
-        })();
-    </script>
+    <!-- Pre-paint theme application, so there is no flash of wrong scheme on reload.
+         External file, synchronous — satisfies script-src 'self' CSP. -->
+    <script src="system/theme-init.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
