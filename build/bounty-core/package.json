@@ -10,7 +10,8 @@
         "test:showcase": "node --test scripts/showcase-contract-test.js",
         "test:showcase-db": "node --test scripts/showcase-sync-test.js",
         "test:checker-files": "node --test scripts/checker-files-test.js",
-        "test:integration-tokens": "node --test scripts/integration-tokens-test.js"
+        "test:integration-tokens": "node --test scripts/integration-tokens-test.js",
+        "test:location": "node --test scripts/location-test.js"
     },
     "repository": {
         "type": "git",
