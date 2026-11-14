@@ -91,15 +91,8 @@ router.post('/agreements/accept', authenticate, async(req, res, next) => {
             return res.json({ ok: true, kind, version: AGREEMENTS[kind].version });
         }
 
-        // task_nda: per task, by a worker, only for tasks the business marked confidential.
-        if (req.user.role !== 'worker') throw httpError(403, 'Only workers accept a task NDA');
-        const bountyId = requireUuid(bounty_id, 'bounty_id');
-        const { rows } = await q('SELECT id, confidential FROM bounties WHERE id = $1', [bountyId]);
-        if (!rows[0]) throw httpError(404, 'Task not found');
-        if (!rows[0].confidential) throw httpError(400, 'This task is not marked confidential');
-        await recordAcceptance(q, req.user.id, kind, bountyId);
-        await logAudit(q, req.user.id, 'nda.accepted', 'bounty', bountyId, { kind, version: AGREEMENTS[kind].version });
-        res.json({ ok: true, kind, version: AGREEMENTS[kind].version, bounty_id: bountyId });
+        // The per-task NDA has been removed, so no new acceptances are recorded.
+        throw httpError(400, 'The task NDA is no longer used');
     } catch (err) { next(err); }
 });
 
@@ -111,29 +104,6 @@ router.get('/business/confidential-tasks', authenticate, requireRole('business')
             [req.user.id]
         );
         res.json({ tasks: rows });
-    } catch (err) { next(err); }
-});
-
-// ------------------------------------------------------------ NDA records for businesses
-router.get('/business/nda-records', authenticate, requireRole('business'), async(req, res, next) => {
-    try {
-        const bountyId = requireUuid(req.query.bounty_id, 'bounty_id');
-        const { rows: owned } = await q(
-            'SELECT id FROM bounties WHERE id = $1 AND business_id = $2', [bountyId, req.user.id]
-        );
-        if (!owned[0]) throw httpError(404, 'Task not found');
-
-        const { rows } = await q(
-            `SELECT a.user_id AS worker_id, a.version, a.body_sha256, a.accepted_at,
-                    u.name AS worker_name, p.status AS participation_status
-             FROM agreement_acceptances a
-             JOIN users u ON u.id = a.user_id
-             LEFT JOIN bounty_participants p ON p.bounty_id = a.bounty_id AND p.worker_id = a.user_id
-             WHERE a.bounty_id = $1 AND a.kind = 'task_nda'
-             ORDER BY a.accepted_at DESC`,
-            [bountyId]
-        );
-        res.json({ records: rows });
     } catch (err) { next(err); }
 });
 

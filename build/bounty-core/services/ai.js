@@ -204,7 +204,7 @@ function validateDraft(raw) {
         raw.suggested_workers : (job ? job.workers : null);
     const executionReason = str(raw.execution_reason, 400) || (job ? `${job.title}: suggested by the classification matrix.` : '');
     const authMissing = job && job.requires_authorization ?
-        ['This kind of task needs a written authorization statement, rules of engagement and an NDA. Write them yourself; the draft does not create them.'] : [];
+        ['This kind of task needs a written authorization statement, rules of engagement. Write them yourself; the draft does not create them.'] : [];
 
     const draft = {
         title, description, category, difficulty,

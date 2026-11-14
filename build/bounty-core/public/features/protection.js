@@ -1,5 +1,5 @@
 // Trust and safety screens: account standing and appeals (everyone), misuse and incident
-// reports (workers), NDA records and access revocation (businesses), and the review console (admins).
+// reports (workers), access revocation (businesses), and the review console (admins).
 // Loaded after core.js and before bounty.js. Uses window.BountyKit for shared helpers.
 // Every value from the server is escaped before it reaches innerHTML.
 (function() {
@@ -59,14 +59,12 @@
             parts.push(standingSection(res[0].actions || []));
             parts.push(agreementsSection(res[1].accepted || []));
             if (K().getRole() === 'worker') parts.push(workerSection());
-            if (K().getRole() === 'business') parts.push(businessSection());
             if (me().is_admin) parts.push(adminSection());
             app().innerHTML = '<section class="page"><div class="container"><h1>Trust and safety</h1>' +
                 '<p class="muted">Agreements, reports, confidentiality and account decisions. Every decision is recorded.</p>' +
                 parts.join('') + '</div></section>';
             bindStanding();
             if (K().getRole() === 'worker') bindWorker();
-            if (K().getRole() === 'business') bindBusiness();
             if (me().is_admin) bindAdmin();
         });
     }
@@ -177,52 +175,6 @@
         }).catch(function() {});
     }
 
-    /* ================================================================ business: NDA records */
-    function businessSection() {
-        return section('Confidential tasks and NDA records',
-            '<p class="small muted">See which workers accepted the task NDA and when. You can remove a worker\'s access to confidential material. Their acceptance stays on record.</p>' +
-            '<label class="field-label">Task<select id="nda-task"><option value="">Loading your confidential tasks…</option></select></label>' +
-            '<div id="nda-records"></div>');
-    }
-
-    function bindBusiness() {
-        var select = document.getElementById('nda-task');
-        K().api('/api/protection/business/confidential-tasks').then(function(res) {
-            var tasks = res.tasks || [];
-            select.innerHTML = '<option value="">Choose a task</option>' + tasks.map(function(t) {
-                return '<option value="' + esc(t.id) + '">' + esc(t.title) + '</option>';
-            }).join('');
-        }).catch(function() { select.innerHTML = '<option value="">Could not load tasks</option>'; });
-
-        select.addEventListener('change', function() { loadNdaRecords(select.value); });
-    }
-
-    function loadNdaRecords(bountyId) {
-        var box = document.getElementById('nda-records');
-        if (!bountyId) { box.innerHTML = ''; return; }
-        K().api('/api/protection/business/nda-records?bounty_id=' + encodeURIComponent(bountyId)).then(function(res) {
-            var rows = (res.records || []).map(function(r) {
-                var active = r.participation_status === 'active' || r.participation_status === 'assigned';
-                var action = active
-                    ? '<button class="btn btn-quiet revoke-btn" type="button" data-worker="' + esc(r.worker_id) + '">Remove access</button>'
-                    : esc(r.participation_status || 'No place on this task');
-                return '<tr>' + cell(esc(r.worker_name)) + cell(esc(when(r.accepted_at))) + cell(esc(r.version)) +
-                    cell(action) + '</tr>';
-            });
-            box.innerHTML = table(['Worker', 'NDA accepted', 'Version', 'Access'], rows);
-            box.querySelectorAll('.revoke-btn').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    if (!window.confirm('Remove this worker\'s access to the confidential material?')) return;
-                    K().api('/api/protection/bounties/' + encodeURIComponent(bountyId) + '/revoke-access', {
-                        method: 'POST', body: { worker_id: btn.dataset.worker },
-                    }).then(function() {
-                        toast('Access removed. The NDA record is kept.', 'success');
-                        loadNdaRecords(bountyId);
-                    }).catch(function(error) { toast(fail(error, 'Could not remove access.'), 'error'); });
-                });
-            });
-        }).catch(function(error) { box.innerHTML = notice(fail(error, 'Could not load records.'), 'warning'); });
-    }
 
     /* ================================================================ admin console */
     function adminSection() {

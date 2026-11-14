@@ -299,7 +299,7 @@ router.post('/ai/bounty-draft', requireScope('bounties:publish'), businessOnly, 
             if (amount !== null) result.draft.suggested_reward = { amount, note: 'Read from your request. Check it before posting.' };
         }
         if (result.draft.requires_authorization) {
-            throw httpError(422, 'This kind of task needs a written authorization and an NDA. Create it on Bounty, not from Workpeg.');
+            throw httpError(422, 'This kind of task needs a written authorization and rules of engagement. Create it on Bounty, not from Workpeg.');
         }
         res.json(result);
     } catch (err) { next(err); }

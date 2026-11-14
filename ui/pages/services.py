@@ -8,10 +8,15 @@ survives page switches; the Disconnect button removes it.
 """
 from workpeg.ui import (
     App, State, Padding, Column, Row, Container, ConstrainedBox, Expanded,
-    Spacer, Text, Button, Link, Tag, Input, TextInput, cookie, http, set_title, store,
+    Spacer, Text, Button, Link, Tag, Input, TextInput, cookie, http, set_title, store, workpeg,
 )
 
 from components import EmptyState, ErrorState, LoadingState, AppointmentStatusTag
+
+# MOCK: the page reads hospitality requests from this business's Workpeg table, so it works
+# while Workpeg cannot reach Bounty's server. Set MOCK to False for the live connection below.
+MOCK = True
+MOCK_NS = "bounty-mock-services"
 
 # Bounty's integration surface. Confirm the production host before publishing.
 API = "https://bounty-workpeg.onrender.com/api/peg"
@@ -27,14 +32,86 @@ class ServicesPage(App):
     connecting = State(False)
     loading = State(False)
     error = State("")
+    table = State("")             # mock: the requests table uuid
+    samples = State(0)            # mock: how many sample requests have been added
 
     async def on_mount(self):
         store.page_title = "Hospitality services"
         set_title("Hospitality services")
+        if MOCK:
+            self.token = "mock"
+            self.who = "Demo business"
+            await self.load_mock()
+            return
         saved = cookie.get(TOKEN_COOKIE)
         if saved != "":
             self.token = saved
             await self.load()
+
+    async def find_or_make(self):
+        tables = await workpeg.get_tables(MOCK_NS)
+        if len(tables) > 0:
+            return tables[0]["uuid"]
+        made = await workpeg.create_table({
+            "name": "Service requests (mock)",
+            "namespace": MOCK_NS,
+            "permission": "760",
+            "columns": [
+                {"id": "title", "name": "Title", "type": "text", "position": 1000, "required": True},
+                {"id": "price", "name": "Price", "type": "text", "position": 2000},
+                {"id": "currency", "name": "Currency", "type": "text", "position": 3000},
+                {"id": "area_label", "name": "Area", "type": "text", "position": 4000},
+                {"id": "local_deadline", "name": "Deadline", "type": "text", "position": 5000},
+                {"id": "pending_quotes", "name": "Pending quotes", "type": "text", "position": 6000},
+            ],
+        })
+        return made["uuid"]
+
+    async def load_mock(self):
+        if self.loading:
+            return
+        self.loading = True
+        self.error = ""
+        try:
+            self.table = await self.find_or_make()
+            rows = await workpeg.get_rows(self.table, limit=100)
+            self.requests = [{
+                "id": r.get("uuid", r.get("id", "")),
+                "title": r["data"].get("title", ""),
+                "price": r["data"].get("price", ""),
+                "currency": r["data"].get("currency", ""),
+                "area_label": r["data"].get("area_label", ""),
+                "local_deadline": r["data"].get("local_deadline", ""),
+                "pending_quotes": r["data"].get("pending_quotes", "0"),
+            } for r in rows]
+            self.appointments = []
+        except Exception as e:
+            self.error = e.message
+        self.loading = False
+
+    async def add_sample(self):
+        # Mock only: adds one sample hospitality request so the page has something to show.
+        if self.table == "":
+            return
+        samples = [
+            ["Deep clean for a 3-bedroom short let", "45000", "NGN", "Lekki", "Fri 20 Nov", "2"],
+            ["Chef for a 40-guest dinner", "120000", "NGN", "Victoria Island", "Sat 21 Nov", "4"],
+            ["Event setup for a rooftop launch", "300000", "NGN", "Ikoyi", "Thu 26 Nov", "1"],
+        ]
+        pick = samples[self.samples % len(samples)]
+        self.samples = self.samples + 1
+        try:
+            rows = await workpeg.get_rows(self.table, limit=100)
+            await workpeg.add_row(self.table, {
+                "data": {
+                    "title": pick[0], "price": pick[1], "currency": pick[2],
+                    "area_label": pick[3], "local_deadline": pick[4], "pending_quotes": pick[5],
+                },
+                "position": (len(rows) + 1) * 1000,
+            })
+            await self.load_mock()
+        except Exception as e:
+            self.error = e.message
 
     def set_draft(self, value):
         self.draft = value
@@ -63,6 +140,8 @@ class ServicesPage(App):
             self.connecting = False
 
     def disconnect(self):
+        if MOCK:
+            return
         cookie.set(TOKEN_COOKIE, "")
         self.token = ""
         self.who = ""
@@ -71,6 +150,9 @@ class ServicesPage(App):
         self.error = ""
 
     async def load(self):
+        if MOCK:
+            await self.load_mock()
+            return
         if self.loading or self.token == "":
             return
         self.loading = True
@@ -164,9 +246,22 @@ class ServicesPage(App):
             ),
             Spacer(),
             Button("Refresh", variant="outline-gray", icon="refresh", on_click=self.refresh),
-            Button("Disconnect", variant="ghost-gray", on_click=self.disconnect),
+            self.mock_button(),
+            self.disconnect_button(),
             gap=8, align="center",
         )
+
+    def mock_button(self):
+        if MOCK:
+            return Button("Add sample request", variant="outline-gray", on_click=self.add_sample)
+        else:
+            return Column()
+
+    def disconnect_button(self):
+        if MOCK:
+            return Column()
+        else:
+            return Button("Disconnect", variant="ghost-gray", on_click=self.disconnect)
 
     def requests_block(self):
         if len(self.requests) == 0:

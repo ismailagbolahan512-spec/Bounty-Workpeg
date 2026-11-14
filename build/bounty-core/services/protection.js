@@ -121,24 +121,10 @@ async function recordAcceptance(q, userId, kind, bountyId = null) {
     );
 }
 
-// A worker may see restricted task material only with an accepted NDA for that task
-// AND an active place on it. Owners and admins are handled by the callers.
+// Confidential tasks are visible only to their owner and to admins. Workers never get in, because
+// the task NDA has been removed. Owners and admins are handled by the callers.
 async function canAccessConfidential(q, workerId, bountyId) {
-    const { rows } = await q(
-        `SELECT 1
-         FROM bounty_participants p
-         JOIN bounties b ON b.id = p.bounty_id
-         WHERE p.bounty_id = $1 AND p.worker_id = $2
-           AND p.status IN ('active', 'assigned')
-           AND b.confidential = TRUE
-           AND EXISTS (
-             SELECT 1 FROM agreement_acceptances a
-             WHERE a.user_id = $2 AND a.kind = 'task_nda'
-               AND a.version = $3 AND a.bounty_id = $1
-           )`,
-        [bountyId, workerId, AGREEMENTS.task_nda.version]
-    );
-    return rows.length > 0;
+    return false;
 }
 
 // Append-only audit record. Never log passwords, tokens or payment details here.
