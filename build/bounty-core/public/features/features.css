@@ -153,3 +153,59 @@
         grid-template-columns: 1fr
     }
 }
+
+
+/* ============ VISIT PROGRESS, GUEST WAITING, CHECKBOX ROWS ============ */
+
+.check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-weight: 500;
+    cursor: pointer
+}
+
+.check-row input {
+    margin-top: 4px;
+    width: 18px;
+    height: 18px;
+    flex: none
+}
+
+.visit-progress {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px
+}
+
+.visit-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted)
+}
+
+.visit-step.done {
+    color: var(--text);
+    font-weight: 600
+}
+
+.visit-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--muted);
+    flex: none
+}
+
+.visit-step.done .visit-dot {
+    background: var(--hosp-terracotta, #A8482A);
+    border-color: var(--hosp-terracotta, #A8482A)
+}
+
+.visit-step[aria-current="step"] {
+    text-decoration: underline;
+    text-underline-offset: 4px
+}

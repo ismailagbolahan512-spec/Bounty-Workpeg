@@ -88,6 +88,8 @@ async function main() {
         deadline: lagosLocal(2, 14, 0),
         industry: 'hotel',
         services: ['Linen laundry and change', 'Pest control'],
+        worker_notes: 'Gate code 4471. Ask for Bisi at reception. Bring a trolley.',
+        urgent: true,
     };
     const noIndustry = await api('POST', '/api/services/requests', { ...requestBody, industry: undefined }, hotel.token);
     check('a request without an industry is refused', noIndustry.status === 400, noIndustry.body);
@@ -116,6 +118,8 @@ async function main() {
 
     // -------------------------------------------------------------- what a provider sees
     const listNear = await api('GET', '/api/services/requests', null, near.token);
+    const flagged = listNear.body.requests.find((q) => q.id === requestId);
+    check('the provider sees the guest-waiting flag on the list', flagged && flagged.urgent === true, listNear.body);
     const seen = listNear.body.requests.find((r) => r.id === requestId);
     check('a provider with on-site turned on sees the open request', Boolean(seen), listNear.body);
     check('the provider sees the area label, never the address, lat or lng',
@@ -195,6 +199,12 @@ async function main() {
     // -------------------------------------------------------------- before confirmation
     const addressEarly = await api('GET', `/api/services/appointments/${appointmentId}/address`, null, near.token);
     check('the address stays hidden before both confirm', addressEarly.status === 403 && !addressEarly.body.address, addressEarly.body);
+    check('the worker notes stay hidden before both confirm', addressEarly.status === 403 && !addressEarly.body.worker_notes, addressEarly.body);
+    const hotelFlag = await api('GET', `/api/services/requests/${requestId}`, null, hotel.token);
+    check('the business sees the guest-waiting flag and its own notes', hotelFlag.body.request.urgent === true && hotelFlag.body.request.worker_notes === requestBody.worker_notes, hotelFlag.body);
+    const nearBeforeConfirm = await api('GET', `/api/services/requests/${requestId}`, null, near.token);
+    check('the provider does not see the worker notes on the request before confirmation', nearBeforeConfirm.body.request && nearBeforeConfirm.body.request.worker_notes === undefined, nearBeforeConfirm.body);
+
 
     const chatEarly = await api('POST', `/api/services/appointments/${appointmentId}/messages`, { kind: 'message', body: 'Hi' }, near.token);
     check('chat is closed before both confirm', chatEarly.status === 409, chatEarly.body);
@@ -209,6 +219,8 @@ async function main() {
     const addressOpen = await api('GET', `/api/services/appointments/${appointmentId}/address`, null, near.token);
     check('the provider sees the exact address once both confirm',
         addressOpen.status === 200 && addressOpen.body.address.address_text === requestBody.address, addressOpen.body);
+    check('the provider sees the worker notes with the address once both confirm',
+        addressOpen.body.address.worker_notes === requestBody.worker_notes, addressOpen.body);
 
     const addressOther = await api('GET', `/api/services/appointments/${appointmentId}/address`, null, second.token);
     check('another provider cannot read the address', addressOther.status === 403, addressOther.body);
@@ -242,6 +254,32 @@ async function main() {
 
     const removeWhileConfirmed = await api('DELETE', `/api/services/requests/${requestId}/address`, null, hotel.token);
     check('the address cannot be removed while a visit is confirmed', removeWhileConfirmed.status === 409, removeWhileConfirmed.body);
+
+    // -------------------------------------------------------------- reviews
+    const reviewEarly = await api('POST', `/api/services/appointments/${appointmentId}/review`, { rating: 5 }, hotel.token);
+    check('a visit cannot be reviewed before the provider marks it finished', reviewEarly.status === 409, reviewEarly.body);
+
+    const finishedLine = await api('POST', `/api/services/appointments/${appointmentId}/messages`, { kind: 'status', status_code: 'finished' }, near.token);
+    check('the provider marks the visit finished', finishedLine.status === 201, finishedLine.body);
+
+    const badRating = await api('POST', `/api/services/appointments/${appointmentId}/review`, { rating: 9 }, hotel.token);
+    check('a rating outside 1 to 5 is refused', badRating.status === 400, badRating.body);
+
+    const hotelReview = await api('POST', `/api/services/appointments/${appointmentId}/review`, { rating: 4, note: 'On time and tidy.' }, hotel.token);
+    check('the business reviews a finished visit', hotelReview.status === 201 && hotelReview.body.review.rating === 4, hotelReview.body);
+
+    const hotelAgain = await api('POST', `/api/services/appointments/${appointmentId}/review`, { rating: 2 }, hotel.token);
+    check('a second review from the same side is refused', hotelAgain.status === 409, hotelAgain.body);
+
+    const providerReview = await api('POST', `/api/services/appointments/${appointmentId}/review`, { rating: 5 }, near.token);
+    check('the provider reviews the business', providerReview.status === 201, providerReview.body);
+
+    const hotelReviews = await api('GET', `/api/services/appointments/${appointmentId}/reviews`, null, hotel.token);
+    check('each side sees its own review and the other side\'s',
+        hotelReviews.body.mine && hotelReviews.body.mine.rating === 4 && hotelReviews.body.theirs && hotelReviews.body.theirs.rating === 5, hotelReviews.body);
+
+    const outsiderReviews = await api('GET', `/api/services/appointments/${appointmentId}/reviews`, null, second.token);
+    check('an outsider cannot read the reviews', outsiderReviews.status === 403, outsiderReviews.body);
 
     // -------------------------------------------------------------- reschedule
     const change = await api('POST', `/api/services/appointments/${appointmentId}/change`,

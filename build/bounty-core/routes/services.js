@@ -79,6 +79,7 @@ function ownerView(r) {
         id: r.id, title: r.title, problem: r.problem, needs: r.needs, price: Number(r.price),
         currency: r.currency, area_label: r.area_label, status: r.status,
         address: r.address_text || null,
+        worker_notes: r.worker_notes || null, urgent: r.urgent === true,
         region_code: r.region_code || null, time_zone: r.time_zone || null,
         local_deadline: hs.formatLocal(deadlineDate(r), r.time_zone || 'UTC'),
         pending_quotes: r.pending_quotes === undefined ? undefined : Number(r.pending_quotes),
@@ -112,9 +113,9 @@ router.post('/requests', requireRole('business'), async(req, res, next) => {
             );
             const id = rows[0].id;
             await client.query(
-                `INSERT INTO service_locations (bounty_id, address_text, region_code, time_zone, created_by)
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [id, r.address, r.region, r.timeZone, req.user.id]
+                `INSERT INTO service_locations (bounty_id, address_text, region_code, time_zone, created_by, worker_notes, urgent)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [id, r.address, r.region, r.timeZone, req.user.id, r.workerNotes, r.urgent]
             );
             await logAudit(client.query.bind(client), req.user.id, 'service_request.created', 'bounty', id, {
                 region: r.region, currency: r.currency,
@@ -137,7 +138,7 @@ async function listMine(req, res) {
     const { rows } = await pool.query(
         `SELECT b.id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
                 b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_industry AS industry, b.service_labels AS services,
-                sl.address_text AS address, sl.region_code, sl.time_zone,
+                sl.address_text AS address, sl.worker_notes, sl.urgent, sl.region_code, sl.time_zone,
                 (SELECT COUNT(*) FROM quotations q WHERE q.bounty_id = b.id AND q.status = 'pending')::int AS pending_quotes
          FROM bounties b
          LEFT JOIN service_locations sl ON sl.bounty_id = b.id
@@ -161,12 +162,12 @@ async function listForProvider(req, res) {
     const { rows } = await pool.query(
         `SELECT b.id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
                 b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_labels AS services,
-                sl.region_code, sl.time_zone
+                sl.region_code, sl.time_zone, sl.urgent
          FROM bounties b
          JOIN service_locations sl ON sl.bounty_id = b.id
          WHERE b.task_mode = 'onsite' AND b.category = $1 AND b.status = 'open' AND b.deadline > NOW()
            AND NOT EXISTS (SELECT 1 FROM quotations q WHERE q.bounty_id = b.id AND q.status = 'accepted')
-         ORDER BY b.created_at DESC LIMIT 200`, [hs.CATEGORY]
+         ORDER BY sl.urgent DESC, b.created_at DESC LIMIT 200`, [hs.CATEGORY]
     );
     const { rows: mine } = await pool.query(
         'SELECT bounty_id, status, amount FROM quotations WHERE provider_id = $1', [req.user.id]
@@ -179,7 +180,7 @@ async function listForProvider(req, res) {
             id: r.id, title: r.title, problem: r.problem, needs: r.needs, price: Number(r.price),
             currency: r.currency, area_label: r.area_label, status: r.status,
             services: r.services || [],
-            region_code: r.region_code,
+            region_code: r.region_code, urgent: r.urgent === true,
             local_deadline: hs.formatLocal(deadlineDate(r), r.time_zone),
             my_quote: q ? { status: q.status, amount: Number(q.amount) } : null,
         };
@@ -216,7 +217,7 @@ router.get('/requests/:id', async(req, res, next) => {
         const { rows } = await pool.query(
             `SELECT b.id, b.business_id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
                     b.currency, b.area_label, b.status, ${DEADLINE_MS}, b.service_industry AS industry, b.service_labels AS services,
-                    sl.address_text, sl.region_code, sl.time_zone
+                    sl.address_text, sl.worker_notes, sl.urgent, sl.region_code, sl.time_zone
              FROM bounties b LEFT JOIN service_locations sl ON sl.bounty_id = b.id
              WHERE b.id = $1 AND b.task_mode = 'onsite' AND b.category = $2`, [req.params.id, hs.CATEGORY]
         );
@@ -247,14 +248,17 @@ router.get('/requests/:id', async(req, res, next) => {
         const view = {
             id: request.id, title: request.title, problem: request.problem, needs: request.needs,
             price: Number(request.price), currency: request.currency, area_label: request.area_label,
-            status: request.status, region_code: request.region_code,
+            status: request.status, region_code: request.region_code, urgent: request.urgent === true,
             local_deadline: hs.formatLocal(deadlineDate(request), request.time_zone),
             my_quote_status: link[0].quote_status,
             services: request.services || [],
             viewer_role: 'provider',
             appointment: await liveAppointment(request.id, req.user.id),
         };
-        if (showAddress) view.address = request.address_text;
+        if (showAddress) {
+            view.address = request.address_text;
+            view.worker_notes = request.worker_notes || null;
+        }
         res.json({ request: view });
     } catch (err) { next(err); }
 });
@@ -545,7 +549,7 @@ router.get('/appointments/:id/address', async(req, res, next) => {
         if (!hs.canSeeAddress(req.user, { business_id: a.business_id }, a)) {
             throw httpError(403, 'The address opens once both sides confirm the visit');
         }
-        const { rows } = await pool.query('SELECT address_text FROM service_locations WHERE bounty_id = $1', [a.bounty_id]);
+        const { rows } = await pool.query('SELECT address_text, worker_notes FROM service_locations WHERE bounty_id = $1', [a.bounty_id]);
         if (rows.length === 0) throw httpError(404, 'The address has been removed');
         await pool.query(`INSERT INTO appointment_events (appointment_id, actor_id, event) VALUES ($1, $2, 'address_disclosed')`, [a.id, req.user.id]);
         res.json({ address: rows[0] });
@@ -594,6 +598,54 @@ router.post('/appointments/:id/messages', async(req, res, next) => {
             ? 'This looks like a street address. Share it through the address on the request, after the visit is confirmed.'
             : null;
         res.status(201).json({ message: rows[0], warning });
+    } catch (err) { next(err); }
+});
+
+// POST /api/services/appointments/:id/review
+// Either side reviews the other once, after the provider has marked the visit finished.
+router.post('/appointments/:id/review', async(req, res, next) => {
+    try {
+        await assertActiveAccount(req.user.id);
+        const a = await loadAppointment(req.params.id);
+        if (!a) throw httpError(404, 'Appointment not found');
+        const party = hs.partyOf(req.user.id, a, a.business_id);
+        if (!party) throw httpError(403, 'Only the provider and the business can review this visit');
+        const { rows: done } = await pool.query(
+            `SELECT 1 FROM appointment_messages WHERE appointment_id = $1 AND kind = 'status' AND status_code = 'finished' LIMIT 1`,
+            [a.id]
+        );
+        if (done.length === 0) throw httpError(409, 'You can review a visit once the provider marks it finished');
+        const input = hs.validateReview(req.body);
+        try {
+            const { rows } = await pool.query(
+                `INSERT INTO service_reviews (appointment_id, reviewer_id, rating, note)
+                 VALUES ($1, $2, $3, $4) RETURNING id, rating, note, created_at`,
+                [a.id, req.user.id, input.rating, input.note]
+            );
+            res.status(201).json({ review: rows[0] });
+        } catch (err) {
+            if (err.code === '23505') throw httpError(409, 'You have already reviewed this visit');
+            throw err;
+        }
+    } catch (err) { next(err); }
+});
+
+// GET /api/services/appointments/:id/reviews
+// Your own review, and the other side's once they have written theirs.
+router.get('/appointments/:id/reviews', async(req, res, next) => {
+    try {
+        const a = await loadAppointment(req.params.id);
+        if (!a) throw httpError(404, 'Appointment not found');
+        if (!hs.partyOf(req.user.id, a, a.business_id)) throw httpError(403, 'Only the provider and the business can see these reviews');
+        const { rows } = await pool.query(
+            `SELECT reviewer_id, rating, note, created_at FROM service_reviews WHERE appointment_id = $1`, [a.id]
+        );
+        const mine = rows.find((r) => String(r.reviewer_id) === String(req.user.id)) || null;
+        const theirs = rows.find((r) => String(r.reviewer_id) !== String(req.user.id)) || null;
+        res.json({
+            mine: mine ? { rating: mine.rating, note: mine.note, created_at: mine.created_at } : null,
+            theirs: theirs ? { rating: theirs.rating, note: theirs.note, created_at: theirs.created_at } : null,
+        });
     } catch (err) { next(err); }
 });
 

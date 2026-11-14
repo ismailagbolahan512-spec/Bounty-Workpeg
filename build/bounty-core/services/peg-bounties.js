@@ -14,6 +14,7 @@ const CATEGORIES = ['dev', 'design', 'content', 'marketing', 'other'];
 const LIMITS = { TITLE_MIN: 3, TITLE_MAX: 200, DESCRIPTION_MIN: 10, DESCRIPTION_MAX: 5000, REWARD_MIN: 0.01, REWARD_MAX: 1000000 };
 
 const FIELDS = ['title', 'description', 'category', 'difficulty', 'reward_amount', 'deadline', 'submission_type', 'currency', 'requirements'];
+// nda_agreed is checked in routes/peg.js; it is not stored on the bounty.
 
 // Returns a clean copy of the fields, or throws a 400 that names the first problem.
 function validatePegBounty(input) {

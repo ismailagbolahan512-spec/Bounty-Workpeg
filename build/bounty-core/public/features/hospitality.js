@@ -112,7 +112,8 @@
         var list = requests.length === 0
             ? '<div class="empty-state"><h3>No requests yet</h3><p>Describe what is wrong, what is needed and a price. Providers in your region will send quotes.</p></div>'
             : '<ul class="list-plain">' + requests.map(function(q) {
-                return '<li class="card-row"><a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
+                return '<li class="card-row">' + (q.urgent ? '<span class="badge badge-signal">Guest waiting</span> ' : '') +
+                    '<a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
                     '<span class="small muted">' + money(q.price, q.currency) + ' · ' + esc(q.area_label) + ' · ' + when(q.local_deadline) +
                     ' · ' + esc(q.pending_quotes) + ' pending quote' + (Number(q.pending_quotes) === 1 ? '' : 's') + '</span></li>';
             }).join('') + '</ul>';
@@ -140,7 +141,8 @@
                 : '<ul class="list-plain">' + requests.map(function(q) {
                     var mine = q.my_quote
                         ? ' · your quote: ' + money(q.my_quote.amount, q.currency) + ' (' + esc(q.my_quote.status) + ')' : '';
-                    return '<li class="card-row"><a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
+                    var tag = q.urgent ? '<span class="badge badge-signal">Guest waiting</span> ' : '';
+                    return '<li class="card-row">' + tag + '<a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
                         '<span class="small muted">' + money(q.price, q.currency) + ' · ' + esc(q.area_label) + ' · ' + when(q.local_deadline) + mine + '</span></li>';
                 }).join('') + '</ul>');
         app().innerHTML = shell('<div class="hosp-page">' +
@@ -208,7 +210,11 @@
             '<input id="req-price" type="number" min="1" step="0.01" required placeholder="25000"></div></div>' +
             '<div class="field"><label for="req-area">Area</label><input id="req-area" maxlength="120" required placeholder="For example, Victoria Island">' +
             '<p class="small muted">The area providers see while deciding whether to quote. The street address below opens only after both sides confirm.</p></div>' +
-            '<div class="field"><label for="req-address">Service address</label><input id="req-address" minlength="5" maxlength="500" required placeholder="Street, building, landmark"></div>' +
+            '<div class="field"><label for="req-address">Service address</label><input id="req-address" minlength="5" maxlength="500" required placeholder="Street, building, landmark">' +
+            '<p class="small muted">Shared only with the provider you choose, after you both confirm the visit.</p></div>' +
+            '<div class="field"><label for="req-notes">What the worker needs to know</label><textarea id="req-notes" rows="3" maxlength="500" placeholder="Gate code, parking, who to ask for at reception, anything they must bring."></textarea>' +
+            '<p class="small muted">Shared with the same provider, after you both confirm. Up to 500 characters.</p></div>' +
+            '<div class="field"><label class="check-row"><input id="req-urgent" type="checkbox"> A guest is waiting. Providers see this request first.</label></div>' +
             '<div class="field"><label for="req-deadline">Needed by (local time at the place)</label><input id="req-deadline" type="datetime-local" required></div>' +
             '<p class="form-error" id="req-error" hidden></p>' +
             '<div class="form-actions"><a class="btn btn-sm" href="#/services">Cancel</a><button class="btn btn-primary btn-sm" id="req-submit" type="submit">Post request</button></div>' +
@@ -298,6 +304,8 @@
                 region: r.code,
                 currency: r.currency,
                 address: document.getElementById('req-address').value,
+                worker_notes: document.getElementById('req-notes').value,
+                urgent: document.getElementById('req-urgent').checked,
                 area_label: document.getElementById('req-area').value,
                 deadline: document.getElementById('req-deadline').value
             };
@@ -332,18 +340,100 @@
             : (q.address
                 ? '<p><strong>Address:</strong> ' + esc(q.address) + '</p>'
                 : '<p class="small muted">Area: ' + esc(q.area_label) + '. The exact address opens after both sides confirm the visit.</p>');
-        var header = '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>' + esc(q.title) + '</h1>' + facts + '</div></div>';
+        var header = '<div class="page-head"><div>' + (q.urgent ? '<p><span class="badge badge-signal">Guest waiting</span></p>' : '') +
+            '<p class="eyebrow">Hospitality services</p><h1>' + esc(q.title) + '</h1>' + facts + '</div></div>';
+        var notesBlock = q.worker_notes
+            ? '<p><strong>What the worker needs to know:</strong> ' + when(q.worker_notes) + '</p>' : '';
         var body = '<div class="detail-section"><h2>What is wrong</h2><p>' + when(q.problem) + '</p>' +
             '<h2>What is needed</h2><p>' + when(q.needs) + '</p>' +
             (q.services && q.services.length ? '<p><strong>Services:</strong> ' + q.services.map(esc).join(', ') + '</p>' : '') +
-            placeBlock + '</div>';
+            placeBlock + notesBlock + '</div>';
 
         body += owner ? quotesBlock(q, quotes) : providerBlock(q, quotes);
-        body += '<div id="appt-slot"></div>';
+        body += '<div id="visit-slot"></div><div id="appt-slot"></div>';
         app().innerHTML = shell(header + body);
 
         bindQuoteForms(q);
         if (q.appointment) mountAppointment(q.appointment, q, owner);
+        loadVisit(q);
+    }
+
+    // ------------------------------------------------------------------ visit progress and reviews
+    var VISIT_STEPS = [
+        ['confirmed', 'Confirmed'], ['on_the_way', 'On the way'], ['arrived', 'Arrived'],
+        ['started', 'Started'], ['finished', 'Finished'],
+    ];
+
+    function progressHTML(codes) {
+        var reached = VISIT_STEPS.filter(function(step) { return codes.indexOf(step[0]) !== -1; });
+        var last = reached.length ? reached[reached.length - 1][0] : 'confirmed';
+        var items = VISIT_STEPS.map(function(step) {
+            var done = step[0] === 'confirmed' || codes.indexOf(step[0]) !== -1;
+            var current = step[0] === last;
+            return '<li class="visit-step' + (done ? ' done' : '') + '"' + (current ? ' aria-current="step"' : '') + '>' +
+                '<span class="visit-dot" aria-hidden="true"></span><span>' + esc(step[1]) + '</span></li>';
+        }).join('');
+        return '<div class="detail-section"><h2>Visit progress</h2><ol class="visit-progress">' + items + '</ol></div>';
+    }
+
+    function reviewHTML(appointmentId, finished, reviews) {
+        if (!finished) return '';
+        var mine = reviews.mine;
+        var theirs = reviews.theirs;
+        var theirsText = theirs
+            ? '<p class="small"><strong>Their review:</strong> ' + stars(theirs.rating) + (theirs.note ? ' · ' + when(theirs.note) : '') + '</p>'
+            : '<p class="small muted">The other side has not reviewed this visit yet.</p>';
+        if (mine) {
+            return '<div class="detail-section"><h2>Your review</h2><p>' + stars(mine.rating) + (mine.note ? ' · ' + when(mine.note) : '') + '</p>' + theirsText + '</div>';
+        }
+        return '<div class="detail-section"><h2>Review this visit</h2>' +
+            '<form id="review-form" class="form-card form" data-appointment="' + esc(appointmentId) + '">' +
+            '<div class="field"><label for="review-rating">Rating</label><select id="review-rating" required>' +
+            '<option value="5">5 · Excellent</option><option value="4">4 · Good</option><option value="3">3 · Fine</option>' +
+            '<option value="2">2 · Poor</option><option value="1">1 · Very poor</option></select></div>' +
+            '<div class="field"><label for="review-note">A short note (optional)</label><textarea id="review-note" rows="2" maxlength="500"></textarea></div>' +
+            '<p class="form-error" id="review-error" hidden></p>' +
+            '<div class="form-actions"><button class="btn btn-primary btn-sm" id="review-submit" type="submit">Send review</button></div></form>' +
+            theirsText + '</div>';
+    }
+
+    function stars(n) {
+        var v = Math.max(1, Math.min(5, Number(n) || 0));
+        return '<span aria-label="' + v + ' out of 5">' + '★'.repeat(v) + '☆'.repeat(5 - v) + '</span>';
+    }
+
+    function loadVisit(q) {
+        var a = q.appointment;
+        var slot = document.getElementById('visit-slot');
+        if (!slot || !a || a.status !== 'confirmed') return;
+        Promise.all([K().api('/api/services/appointments/' + encodeURIComponent(a.id) + '/messages'),
+            K().api('/api/services/appointments/' + encodeURIComponent(a.id) + '/reviews')]).then(function(res) {
+            var codes = (res[0].messages || []).filter(function(m) { return m.kind === 'status'; }).map(function(m) { return m.status_code; });
+            var finished = codes.indexOf('finished') !== -1;
+            slot.innerHTML = progressHTML(codes) + reviewHTML(a.id, finished, res[1]);
+            bindReview(q.id);
+        }).catch(function() { /* the rest of the page still works without the progress strip */ });
+    }
+
+    function bindReview(requestId) {
+        var form = document.getElementById('review-form');
+        if (!form) return;
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var error = document.getElementById('review-error');
+            var button = document.getElementById('review-submit');
+            button.disabled = true;
+            K().api('/api/services/appointments/' + encodeURIComponent(form.getAttribute('data-appointment')) + '/review', {
+                method: 'POST',
+                body: { rating: Number(document.getElementById('review-rating').value), note: document.getElementById('review-note').value }
+            }).then(function() {
+                K().toast('Thank you for the review', 'success');
+                detail(requestId);
+            }).catch(function(err) {
+                button.disabled = false;
+                setError(error, err, 'Could not send the review.');
+            });
+        });
     }
 
     function quotesBlock(q, quotes) {

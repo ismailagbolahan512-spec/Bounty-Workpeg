@@ -209,7 +209,7 @@ router.post('/confirmations', async(req, res, next) => {
     } catch (err) { next(err); }
 });
 
-// Updates for the business: notifications about its tasks, such as a worker taking one.
+// Updates for the business: every notification it receives, such as a worker taking a task.
 // Returns those created after `since` (an ISO time), oldest first. Without `since`, the last 24 hours.
 // The peg polls this with its own cursor, so a notification appears once.
 router.get('/notifications', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
@@ -218,7 +218,7 @@ router.get('/notifications', requireScope('bounties:publish'), businessOnly, asy
         const since = sinceRaw && !Number.isNaN(sinceRaw.getTime()) ? sinceRaw : new Date(Date.now() - 24 * 3600 * 1000);
         const { rows } = await pool.query(
             `SELECT id, message, link, created_at FROM notifications
-             WHERE user_id = $1 AND link LIKE '#/bounties/%' AND created_at > $2
+             WHERE user_id = $1 AND created_at > $2
              ORDER BY created_at ASC LIMIT 50`,
             [req.user.id, since]
         );
@@ -242,6 +242,10 @@ router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(r
         await assertActiveAccount(req.user.id);
         await requireAgreement(pool.query.bind(pool), req.user.id, 'creator_protection_business');
         const fields = pegBounties.validatePegBounty(body.payload);
+        // The business must agree to the NDA in the Workpeg chat before anything is posted.
+        if (body.payload.nda_agreed !== true) {
+            throw httpError(422, 'Agree to the NDA before this task can be posted');
+        }
         await client.query('BEGIN');
         if (typeof body.confirmation_id === 'string' && body.confirmation_id !== '') {
             const used = await tokens.consumeConfirmation(client, {
@@ -263,7 +267,7 @@ router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(r
             }
         }
         const row = await pegBounties.insertPegBounty(client, req.user.id, fields, false);
-        await logAudit(client.query.bind(client), req.user.id, 'bounty.created_from_workpeg', 'bounty', row.id, { title: row.title });
+        await logAudit(client.query.bind(client), req.user.id, 'bounty.created_from_workpeg', 'bounty', row.id, { title: row.title, nda_agreed: true });
         await client.query('COMMIT');
         res.status(201).json(row);
     } catch (err) {
