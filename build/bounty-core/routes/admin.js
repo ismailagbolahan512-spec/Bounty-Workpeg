@@ -106,12 +106,17 @@ router.patch('/reports/:id', async(req, res, next) => {
 
         await client.query('COMMIT');
 
-        // Tell the person who reported it. Sent after the commit.
-        createNotification(
-            rows[0].reporter_id,
-            `Your report on "${rows[0].bounty_title}" was ${status}.`,
-            '#/bounties/' + rows[0].bounty_id
-        ).catch(() => {});
+        // Tell the person who reported it. Sent after the commit, and awaited so the row exists
+        // before the response returns. A failure is logged and never undoes the resolution.
+        try {
+            await createNotification(
+                rows[0].reporter_id,
+                `Your report on "${rows[0].bounty_title}" was ${status}.`,
+                '#/bounties/' + rows[0].bounty_id
+            );
+        } catch (notifyErr) {
+            console.error('✗ Reporter notification failed:', notifyErr.message);
+        }
 
         res.json(updated.rows[0]);
     } catch (err) {
