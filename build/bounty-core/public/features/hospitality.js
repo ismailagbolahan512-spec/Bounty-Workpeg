@@ -164,7 +164,7 @@
         }
         app().innerHTML = loading('Opening the request form…');
         Promise.all([K().api('/api/global/regions'), K().api('/api/services/catalogue'), K().api('/api/profile/me')]).then(function(res) {
-            requestForm(res[0].regions || [], res[1].industries || [], res[2].industry || '');
+            requestForm(res[0].regions || [], res[1].industries || [], K().queryParam('industry') || res[2].industry || '');
         }).catch(function(error) { app().innerHTML = failed(error, 'Could not open the form.'); });
     }
 
