@@ -76,6 +76,55 @@
     padding: clamp(32px, 5vw, 64px)
 }
 
+/* ---------- Motion ----------
+   Sections rise and fade in as they scroll into view. Browsers without
+   scroll-driven animation keep everything visible (the fallback is no
+   animation at all). Users who ask for less motion get none. */
+@keyframes rise-in {
+    from { opacity: 0; transform: translateY(28px) }
+    to   { opacity: 1; transform: none }
+}
+
+@keyframes float-soft {
+    0%, 100% { transform: translateY(0) }
+    50%      { transform: translateY(-8px) }
+}
+
+@supports (animation-timeline: view()) {
+    .section,
+    .section-tight,
+    .split-visual,
+    .cta-panel {
+        animation: rise-in linear both;
+        animation-timeline: view();
+        animation-range: entry 0% cover 30%
+    }
+
+    .float-note {
+        animation: float-soft 6s ease-in-out infinite
+    }
+
+    .float-note.two {
+        animation-delay: -3s
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .section,
+    .section-tight,
+    .split-visual,
+    .cta-panel,
+    .float-note {
+        animation: none !important
+    }
+
+    .btn,
+    .btn:hover {
+        transform: none;
+        transition: none
+    }
+}
+
 /* Mobile: keep the page in one column with a 16px gutter and no sideways scroll */
 @media (max-width: 720px) {
     .hero {
