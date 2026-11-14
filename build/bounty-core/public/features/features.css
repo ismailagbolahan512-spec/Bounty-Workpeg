@@ -245,3 +245,8 @@
    runs into its label. The global checkbox rule is 18px; ux-w-auto had let it stretch. */
 .ux-inline-check { white-space: nowrap; }
 .ux-inline-check input[type="checkbox"] { width: 18px; height: 18px; min-width: 18px; margin: 0; flex: none; }
+
+/* Checkboxes and radios inside a .field (for example the Regions list) keep their own size.
+   The text-field rule for .field input made them full width and 47px tall. */
+.field input[type="checkbox"],
+.field input[type="radio"] { width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; flex: none; }
