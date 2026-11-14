@@ -167,6 +167,7 @@ async function listForProvider(req, res) {
          JOIN service_locations sl ON sl.bounty_id = b.id
          WHERE b.task_mode = 'onsite' AND b.category = $1 AND b.status = 'open' AND b.deadline > NOW()
            AND NOT EXISTS (SELECT 1 FROM quotations q WHERE q.bounty_id = b.id AND q.status = 'accepted')
+           AND NOT EXISTS (SELECT 1 FROM bounty_participants bp WHERE bp.bounty_id = b.id AND bp.status = 'assigned')
          ORDER BY sl.urgent DESC, b.created_at DESC LIMIT 200`, [hs.CATEGORY]
     );
     const { rows: mine } = await pool.query(
@@ -279,48 +280,95 @@ router.delete('/requests/:id/address', requireRole('business'), async(req, res, 
     } catch (err) { next(err); }
 });
 
-// ------------------------------------------------------------------ quotes
+// ------------------------------------------------------------------ take (first to click)
 
-router.post('/requests/:id/quotes', requireRole('worker'), async(req, res, next) => {
+// A provider takes an open on-site request. The first valid take wins: the request row is locked,
+// so a second click on the same request gets 409. The provider proposes the visit window and the
+// business confirms it through the usual confirm route.
+router.post('/requests/:id/take', requireRole('worker'), async(req, res, next) => {
     try {
         await assertActiveAccount(req.user.id);
-        const q = hs.validateQuote(req.body);
-        const { rows } = await pool.query(
-            `SELECT b.id, b.business_id, b.title, b.status, b.deadline AS deadline_utc, ${DEADLINE_MS},
-                    sl.time_zone
-             FROM bounties b JOIN service_locations sl ON sl.bounty_id = b.id
-             WHERE b.id = $1 AND b.task_mode = 'onsite' AND b.category = $2`, [req.params.id, hs.CATEGORY]
-        );
-        const request = rows[0];
-        if (!request) throw httpError(404, 'Request not found');
-        if (String(request.business_id) === String(req.user.id)) throw httpError(403, 'You cannot quote on your own request');
-        if (request.status !== 'open' || deadlineDate(request) <= new Date()) throw httpError(409, 'This request is no longer open');
-
-        const { rows: accepted } = await pool.query(
-            `SELECT 1 FROM quotations WHERE bounty_id = $1 AND status = 'accepted'`, [request.id]
-        );
-        if (accepted.length > 0) throw httpError(409, 'A provider has already been chosen for this request');
-
-        const { rows: meRows } = await pool.query('SELECT work_modes FROM users WHERE id = $1', [req.user.id]);
-        const modes = (meRows[0] && meRows[0].work_modes) || [];
-        if (!modes.includes('onsite')) throw httpError(422, 'Turn on on-site work on your profile before you quote');
-
-        let quote;
-        try {
-            const { rows: inserted } = await pool.query(
-                `INSERT INTO quotations (bounty_id, provider_id, amount, note, status, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())
-                 RETURNING id, bounty_id, amount, note, status, created_at`,
-                [request.id, req.user.id, q.amount, q.note]
+        const body = req.body || {};
+        const appointment = await inTransaction(async(client) => {
+            const { rows } = await client.query(
+                `SELECT b.id, b.business_id, b.title, b.status, b.deadline AS deadline_utc, ${DEADLINE_MS}, sl.time_zone
+                 FROM bounties b JOIN service_locations sl ON sl.bounty_id = b.id
+                 WHERE b.id = $1 AND b.task_mode = 'onsite' AND b.category = $2 FOR UPDATE OF b`, [req.params.id, hs.CATEGORY]
             );
-            quote = inserted[0];
-        } catch (err) {
-            if (err.code === '23505') throw httpError(409, 'You already have a pending quote on this request');
-            throw err;
-        }
-        await createNotification(request.business_id, `New quote on "${request.title}"`, `#/services/${request.id}`);
-        res.status(201).json({ quote: { ...quote, amount: Number(quote.amount) } });
+            const request = rows[0];
+            if (!request) throw httpError(404, 'Request not found');
+            if (String(request.business_id) === String(req.user.id)) throw httpError(403, 'You cannot take your own request');
+            if (request.status !== 'open' || deadlineDate(request) <= new Date()) throw httpError(409, 'This request is no longer open');
+
+            const { rows: taken } = await client.query(
+                `SELECT 1 FROM bounty_participants WHERE bounty_id = $1 AND status = 'assigned'
+                 UNION ALL
+                 SELECT 1 FROM quotations WHERE bounty_id = $1 AND status = 'accepted'
+                 LIMIT 1`, [request.id]
+            );
+            if (taken.length > 0) throw httpError(409, 'Someone has already taken this request');
+
+            const { rows: me } = await client.query(
+                `SELECT work_modes, timezone, to_char(available_start, 'HH24:MI') AS available_start,
+                        to_char(available_end, 'HH24:MI') AS available_end
+                 FROM users WHERE id = $1`, [req.user.id]
+            );
+            const h = me[0] || {};
+            if (!(h.work_modes || []).includes('onsite')) throw httpError(422, 'Turn on on-site work on your profile before you take a request');
+
+            const window = hs.validateWindow(body.starts_local, body.ends_local, request.time_zone, deadlineDate(request));
+            if (h.timezone && h.available_start && h.available_end) {
+                if (!hs.visitFitsHours(window.starts, window.ends, h.timezone, h.available_start, h.available_end)) {
+                    throw httpError(409, `You are available ${h.available_start} to ${h.available_end} (${h.timezone}). Choose a visit inside those hours.`);
+                }
+            }
+
+            await client.query(
+                `UPDATE quotations SET status = 'declined', updated_at = NOW() WHERE bounty_id = $1 AND status = 'pending'`, [request.id]
+            );
+            await client.query(
+                `INSERT INTO bounty_participants (bounty_id, worker_id, status) VALUES ($1, $2, 'assigned')`,
+                [request.id, req.user.id]
+            );
+            let inserted;
+            try {
+                const result = await client.query(
+                    `INSERT INTO appointments (bounty_id, provider_id, starts_at, ends_at, status, proposed_by, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, 'proposed', $5, NOW(), NOW())
+                     RETURNING id, bounty_id, provider_id, starts_at, ends_at, status`,
+                    [request.id, req.user.id, window.starts.toISOString(), window.ends.toISOString(), req.user.id]
+                );
+                inserted = result.rows[0];
+            } catch (err) {
+                if (err.code === '23505') throw httpError(409, 'Someone has already taken this request');
+                throw err;
+            }
+            await client.query(
+                `INSERT INTO appointment_events (appointment_id, actor_id, event, details) VALUES ($1, $2, 'proposed', $3)`,
+                [inserted.id, req.user.id, JSON.stringify({ starts_at: window.starts.toISOString(), ends_at: window.ends.toISOString() })]
+            );
+            return { ...inserted, title: request.title, time_zone: request.time_zone, business_id: request.business_id };
+        });
+        await createNotification(
+            appointment.business_id,
+            `"${appointment.title}" was taken. Confirm the visit time.`,
+            `#/services/${appointment.bounty_id}`
+        );
+        res.status(201).json({
+            appointment: {
+                id: appointment.id, bounty_id: appointment.bounty_id, status: appointment.status,
+                local_starts: hs.formatLocal(new Date(appointment.starts_at), appointment.time_zone),
+                local_ends: hs.formatLocal(new Date(appointment.ends_at), appointment.time_zone),
+            },
+        });
     } catch (err) { next(err); }
+});
+
+// ------------------------------------------------------------------ quotes (retired)
+
+// Retired: hospitality requests are taken first-to-click (above). Kept so old clients get a clear answer.
+router.post('/requests/:id/quotes', requireRole('worker'), (req, res) => {
+    res.status(410).json({ error: 'Quotes are no longer used. Take the request instead.' });
 });
 
 router.get('/requests/:id/quotes', async(req, res, next) => {
