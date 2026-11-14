@@ -1993,8 +1993,10 @@ p {
     .mobile-menu {
         display: grid
     }
-    .header-actions .desktop-auth {
-        display: none
+    /* Desktop auth buttons give way to the mobile menu, which carries Log in / Get started.
+       !important because .btn sets display later in the cascade and would win otherwise. */
+    .desktop-auth {
+        display: none !important
     }
     .hero-grid {
         grid-template-columns: 1fr;
