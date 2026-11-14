@@ -97,6 +97,7 @@ app.listen(process.env.PORT || 3000, () => {
     require('./services/auto-migrate').run().catch((err) => {
         console.error('auto-migrate: unexpected failure -', err);
     });
+    require('./services/reminders').start();
 });
 
 module.exports = { notFound, errorHandler }
