@@ -1,0 +1,200 @@
+/* ============================================================
+   Card & Panel — raised surfaces for bounded content.
+   Replaces the existing .panel look across bounty.css.
+   ============================================================ */
+
+.panel,
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-24);
+  color: var(--text);
+  position: relative;
+  /* Subtle, not puffy */
+  box-shadow: var(--shadow-raised);
+  /* kill any inherited gradient from bounty.css */
+  background-image: none !important;
+}
+
+.panel:hover,
+.card:hover { box-shadow: var(--shadow-raised); }  /* don't lift on hover */
+
+.card-sunk,
+.panel.sunk {
+  background: var(--surface-sunk);
+  box-shadow: none;
+}
+
+.panel-flat,
+.card-flat {
+  box-shadow: none;
+}
+
+/* Slots inside a panel */
+.panel-head,
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin-bottom: var(--space-16);
+}
+.panel-head h2,
+.panel-head h3,
+.card-head h2,
+.card-head h3 { margin: 0; }
+.panel-body > * + *,
+.card-body > * + * { margin-top: var(--space-12); }
+.panel-foot,
+.card-foot {
+  margin-top: var(--space-20);
+  padding-top: var(--space-16);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* A row of cards that reflow cleanly */
+.card-grid {
+  display: grid;
+  gap: var(--space-16);
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+/* Metric tile for dashboards */
+.stat-card,
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-16) var(--space-20);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  box-shadow: none;
+  background-image: none !important;
+}
+.stat-card > span,
+.metric-card > span {
+  font-size: var(--text-small);
+  color: var(--text-tertiary);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+}
+.stat-card strong,
+.metric-card strong {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.metric-card .metric-delta {
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+}
+.metric-delta.pos { color: var(--success); }
+.metric-delta.neg { color: var(--critical); }
+
+/* Attention band: the "what needs your attention" surface */
+.attention-band {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-20);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  position: relative;
+  overflow: hidden;
+}
+.attention-band::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--signal);
+}
+.attention-band header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.attention-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.attention-item:last-child { border-bottom: 0; }
+.attention-item h4 {
+  font-size: 14.5px;
+  margin: 0;
+  color: var(--text);
+}
+.attention-item p {
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+}
+
+/* Detail layout (two columns: content + sticky sidebar) */
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-24);
+  align-items: start;
+}
+.detail-sidebar {
+  position: sticky;
+  top: 88px;
+  align-self: start;
+}
+@media (max-width: 960px) {
+  .detail-layout { grid-template-columns: 1fr; }
+  .detail-sidebar { position: static; }
+}
+.detail-section {
+  padding: var(--space-20) 0;
+  border-top: 1px solid var(--border);
+}
+.detail-section:first-of-type { border-top: 0; padding-top: 0; }
+.detail-section h2 {
+  font-size: 1.125rem;
+  margin: 0 0 var(--space-12);
+}
+.detail-section p {
+  color: var(--text-secondary);
+}
+
+/* Definition list — key/value pairs on the sidebar */
+dl.definition-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  margin: var(--space-16) 0 0;
+}
+dl.definition-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+}
+dl.definition-list > div:last-child { border-bottom: 0; }
+dl.definition-list dt {
+  color: var(--text-tertiary);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+dl.definition-list dd {
+  color: var(--text);
+  font-weight: 500;
+  margin: 0;
+  text-align: right;
+  font-size: var(--text-small);
+}

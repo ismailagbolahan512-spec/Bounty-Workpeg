@@ -1,0 +1,204 @@
+/* Tabs, Stepper, Progress, Pagination, Breadcrumb. */
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-20);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button,
+.tabs a {
+  position: relative;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 0;
+  font: 500 14px var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  border-radius: 7px 7px 0 0;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+.tabs button:hover,
+.tabs a:hover {
+  color: var(--text);
+  background: var(--surface-sunk);
+  text-decoration: none;
+}
+.tabs button[aria-selected="true"],
+.tabs a[aria-current="page"] {
+  color: var(--text);
+}
+.tabs button[aria-selected="true"]::after,
+.tabs a[aria-current="page"]::after {
+  content: '';
+  position: absolute;
+  left: 14px; right: 14px; bottom: -1px;
+  height: 2px;
+  background: var(--signal);
+  border-radius: 2px 2px 0 0;
+}
+.tabs .count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  background: var(--surface-sunk);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Stepper — used on bounty creation */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-24);
+}
+.stepper-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+.stepper-num {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.stepper-item.current .stepper-num {
+  background: var(--signal);
+  color: var(--signal-fg);
+  border-color: transparent;
+}
+.stepper-item.current { color: var(--text); }
+.stepper-item.done .stepper-num {
+  background: var(--text);
+  color: var(--bg);
+  border-color: transparent;
+}
+.stepper-item.done { color: var(--text-secondary); }
+.stepper-rail {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  min-width: 10px;
+}
+
+/* Progress bar */
+.progress {
+  height: 6px;
+  background: var(--surface-sunk);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--signal);
+  width: 0%;
+  transition: width var(--dur-slow) var(--ease-out);
+  border-radius: 999px;
+}
+.progress-indeterminate .progress-bar {
+  width: 30%;
+  animation: progress-move 1.2s linear infinite;
+}
+@keyframes progress-move {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate .progress-bar { animation: none; width: 100%; }
+}
+
+/* Pagination */
+.pagination {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  margin-top: var(--space-20);
+}
+.pagination button,
+.pagination a {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: 500 13px var(--font-body);
+  cursor: pointer;
+  text-decoration: none;
+}
+.pagination button:hover,
+.pagination a:hover {
+  background: var(--surface-sunk);
+  color: var(--text);
+  text-decoration: none;
+}
+.pagination [aria-current="page"],
+.pagination .current {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.pagination button:disabled,
+.pagination [aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Breadcrumb */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-small);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-12);
+}
+.breadcrumb a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.breadcrumb a:hover { color: var(--text); text-decoration: none; }
+.breadcrumb .sep {
+  color: var(--text-tertiary);
+}
+.breadcrumb [aria-current="page"] {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Back link */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: var(--text-small);
+  margin-bottom: var(--space-16);
+}
+.back-link:hover { color: var(--text); text-decoration: none; }

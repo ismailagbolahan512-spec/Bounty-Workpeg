@@ -1,0 +1,308 @@
+// routes/peg.js — the Workpeg integration surface. Every route here takes an integration token
+// (Bearer, bnt_wp_...) and checks its scope and the owner's current role on every request.
+// Design: docs/workpeg-identity-design.md. Nothing here approves work, changes roles, or touches money.
+//   GET  /api/peg/me                      the token's owner and scopes
+//   GET  /api/peg/bounties                open, public, non-regional tasks (bounties:read)
+//   GET  /api/peg/business/requests       a business's own hospitality requests (services:read)
+//   GET  /api/peg/business/requests/:id   one request with its quotes and visit (services:read)
+//   GET  /api/peg/business/appointments   the business's live visits (services:read)
+//   POST /api/peg/confirmations           ask the user to approve a sensitive action
+//   POST /api/peg/bounties                post a bounty, once the owner has approved these exact details (bounties:publish)
+//   POST /api/peg/ai/bounty-draft         AI draft from a prompt; saves nothing (bounties:publish)
+
+const express = require('express');
+const { pool } = require('../db');
+const { authenticateIntegration, requireScope, httpError } = require('../middleware/auth');
+const { logAudit, assertActiveAccount, requireAgreement } = require('../services/protection');
+const pegBounties = require('../services/peg-bounties');
+const { generateBountyDraft } = require('../services/ai');
+const tokens = require('../services/integration-tokens');
+const hs = require('../services/hospitality');
+const { flags } = require('../services/schema-flags');
+
+const router = express.Router();
+
+router.use(authenticateIntegration);
+
+// Only businesses see the hospitality services surface. The peg is a business-facing tool.
+function businessOnly(req, res, next) {
+    if (req.user.role !== 'business') return next(httpError(403, 'Only a business can use this'));
+    next();
+}
+
+// Hospitality tables may not be in this database yet. Return a clear 503 instead of a 500.
+async function requireHospitality(req, res, next) {
+    try {
+        const f = await flags();
+        if (!f.serviceLocations) {
+            return res.status(503).json({ message: 'Hospitality services are not ready on this server yet. Please check back soon.' });
+        }
+        next();
+    } catch (err) { next(err); }
+}
+
+const DEADLINE_MS = '(EXTRACT(EPOCH FROM b.deadline) * 1000)::bigint AS deadline_ms';
+function fmtDeadline(row) {
+    return hs.formatLocal(new Date(Number(row.deadline_ms)), row.time_zone || 'UTC');
+}
+
+router.get('/me', (req, res) => {
+    res.json({
+        user: { name: req.user.name, role: req.user.role },
+        scopes: req.integration.scopes,
+    });
+});
+
+// Only tasks that are open, public, not confidential and not limited to a region. Region-limited
+// and confidential tasks stay out until the Peg can check the user's region and NDA (rules section 3).
+router.get('/bounties', requireScope('bounties:read'), async(req, res, next) => {
+    try {
+        const parsed = parseInt(req.query.limit, 10);
+        const limit = Number.isInteger(parsed) ? Math.min(Math.max(parsed, 1), 20) : 10;
+        const category = typeof req.query.category === 'string' && req.query.category.length > 0 && req.query.category.length <= 100
+            ? req.query.category : null;
+        const { rows } = await pool.query(
+            `SELECT id, title, category, difficulty, reward_amount, deadline, submission_type, status
+             FROM bounties
+             WHERE status = 'open' AND confidential = FALSE AND cardinality(regions) = 0
+               AND deadline > NOW() AND ($1::text IS NULL OR category = $1)
+             ORDER BY created_at DESC LIMIT $2`,
+            [category, limit]
+        );
+        res.json({ bounties: rows.map((r) => ({ ...r, reward_amount: Number(r.reward_amount) })) });
+    } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------------- business-side hospitality
+// Owner view, read-only. Everything is scoped to this user's own bounties.
+
+router.get('/business/requests', requireScope('services:read'), businessOnly, requireHospitality, async(req, res, next) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT b.id, b.title, b.description AS problem, b.requirements AS needs, b.reward_amount AS price,
+                    b.currency, b.area_label, b.status, ${DEADLINE_MS},
+                    b.service_industry AS industry, b.service_labels AS services,
+                    sl.region_code, sl.time_zone,
+                    (SELECT COUNT(*) FROM quotations q WHERE q.bounty_id = b.id AND q.status = 'pending')::int AS pending_quotes
+             FROM bounties b
+             LEFT JOIN service_locations sl ON sl.bounty_id = b.id
+             WHERE b.business_id = $1 AND b.task_mode = 'onsite' AND b.category = $2
+             ORDER BY b.created_at DESC LIMIT 100`,
+            [req.user.id, hs.CATEGORY]
+        );
+        res.json({
+            requests: rows.map((r) => ({
+                id: r.id, title: r.title, problem: r.problem, needs: r.needs,
+                price: Number(r.price), currency: r.currency, area_label: r.area_label, status: r.status,
+                industry: r.industry || null, services: r.services || [],
+                region_code: r.region_code || null,
+                local_deadline: fmtDeadline(r),
+                pending_quotes: Number(r.pending_quotes) || 0,
+            })),
+        });
+    } catch (err) { next(err); }
+});
+
+router.get('/business/requests/:id', requireScope('services:read'), businessOnly, requireHospitality, async(req, res, next) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT b.id, b.business_id, b.title, b.description AS problem, b.requirements AS needs,
+                    b.reward_amount AS price, b.currency, b.area_label, b.status, ${DEADLINE_MS},
+                    b.service_industry AS industry, b.service_labels AS services,
+                    sl.address_text, sl.region_code, sl.time_zone
+             FROM bounties b LEFT JOIN service_locations sl ON sl.bounty_id = b.id
+             WHERE b.id = $1 AND b.business_id = $2 AND b.task_mode = 'onsite' AND b.category = $3`,
+            [req.params.id, req.user.id, hs.CATEGORY]
+        );
+        const r = rows[0];
+        if (!r) throw httpError(404, 'Request not found');
+        const { rows: quoteRows } = await pool.query(
+            `SELECT q.id, q.amount, q.note, q.status, q.created_at, u.name AS provider_name
+             FROM quotations q JOIN users u ON u.id = q.provider_id
+             WHERE q.bounty_id = $1 ORDER BY q.created_at ASC`,
+            [r.id]
+        );
+        const { rows: appt } = await pool.query(
+            `SELECT a.id, a.status, a.provider_confirmed_at, a.business_confirmed_at,
+                    EXTRACT(EPOCH FROM a.starts_at) * 1000 AS starts_ms,
+                    EXTRACT(EPOCH FROM a.ends_at)   * 1000 AS ends_ms,
+                    u.name AS provider_name
+             FROM appointments a JOIN users u ON u.id = a.provider_id
+             WHERE a.bounty_id = $1 AND a.status IN ('proposed','confirmed')
+             ORDER BY a.created_at DESC LIMIT 1`,
+            [r.id]
+        );
+        const visit = appt[0] ? {
+            id: appt[0].id, status: appt[0].status,
+            provider_name: appt[0].provider_name,
+            provider_confirmed: appt[0].provider_confirmed_at != null,
+            business_confirmed: appt[0].business_confirmed_at != null,
+            local_starts: hs.formatLocal(new Date(Number(appt[0].starts_ms)), r.time_zone || 'UTC'),
+            local_ends: hs.formatLocal(new Date(Number(appt[0].ends_ms)), r.time_zone || 'UTC'),
+        } : null;
+        res.json({
+            request: {
+                id: r.id, title: r.title, problem: r.problem, needs: r.needs,
+                price: Number(r.price), currency: r.currency, area_label: r.area_label, status: r.status,
+                address: r.address_text || null, region_code: r.region_code || null,
+                industry: r.industry || null, services: r.services || [],
+                local_deadline: fmtDeadline(r),
+                quotes: quoteRows.map((q) => ({ ...q, amount: Number(q.amount) })),
+                appointment: visit,
+            },
+        });
+    } catch (err) { next(err); }
+});
+
+router.get('/business/appointments', requireScope('services:read'), businessOnly, requireHospitality, async(req, res, next) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT a.id, a.bounty_id, a.status, a.provider_confirmed_at, a.business_confirmed_at,
+                    EXTRACT(EPOCH FROM a.starts_at) * 1000 AS starts_ms,
+                    EXTRACT(EPOCH FROM a.ends_at)   * 1000 AS ends_ms,
+                    b.title, sl.time_zone
+             FROM appointments a
+             JOIN bounties b ON b.id = a.bounty_id
+             LEFT JOIN service_locations sl ON sl.bounty_id = b.id
+             WHERE b.business_id = $1 AND a.status IN ('proposed','confirmed')
+             ORDER BY a.starts_at ASC LIMIT 50`,
+            [req.user.id]
+        );
+        res.json({
+            appointments: rows.map((a) => ({
+                id: a.id, bounty_id: a.bounty_id, title: a.title, status: a.status,
+                provider_confirmed: a.provider_confirmed_at != null,
+                business_confirmed: a.business_confirmed_at != null,
+                local_starts: hs.formatLocal(new Date(Number(a.starts_ms)), a.time_zone || 'UTC'),
+                local_ends: hs.formatLocal(new Date(Number(a.ends_ms)), a.time_zone || 'UTC'),
+            })),
+        });
+    } catch (err) { next(err); }
+});
+
+// Asks for the user's approval of one sensitive action. The action itself does not run here:
+// it runs only after approval, and only with the exact payload approved (design section 3.4).
+router.post('/confirmations', async(req, res, next) => {
+    try {
+        const body = req.body || {};
+        const action = body.action;
+        if (!tokens.SENSITIVE_SCOPES.includes(action)) {
+            throw httpError(400, 'This action does not need approval, or is not supported');
+        }
+        if (!req.integration.scopes.includes(action)) {
+            throw httpError(403, `This token does not allow ${action}`);
+        }
+        if (!tokens.roleAllows(req.user.role, action)) {
+            throw httpError(403, `Your role cannot use ${action}`);
+        }
+        const payload = body.payload;
+        if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+            throw httpError(400, 'Send the action details as an object in payload');
+        }
+        const conf = await tokens.requestConfirmation({ tokenId: req.integration.tokenId, action, payload });
+        await logAudit(pool.query.bind(pool), req.user.id, 'integration.confirmation_requested', 'integration_confirmation', conf.id, {
+            action,
+        });
+        res.status(201).json({
+            id: conf.id, action: conf.action, expires_at: conf.expires_at, status: 'awaiting_user_approval',
+        });
+    } catch (err) { next(err); }
+});
+
+// Updates for the business: every notification it receives, such as a worker taking a task.
+// Returns those created after `since` (an ISO time), oldest first. Without `since`, the last 24 hours.
+// The peg polls this with its own cursor, so a notification appears once.
+router.get('/notifications', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    try {
+        const sinceRaw = typeof req.query.since === 'string' ? new Date(req.query.since) : null;
+        const since = sinceRaw && !Number.isNaN(sinceRaw.getTime()) ? sinceRaw : new Date(Date.now() - 24 * 3600 * 1000);
+        const { rows } = await pool.query(
+            `SELECT id, message, link, created_at FROM notifications
+             WHERE user_id = $1 AND created_at > $2
+             ORDER BY created_at ASC LIMIT 50`,
+            [req.user.id, since]
+        );
+        res.json(rows);
+    } catch (err) { next(err); }
+});
+
+// Limits for posting from Workpeg chat without a separate approval on Bounty. The chat post is
+// the owner's approval, so these caps keep one connection token from posting much at once.
+const PEG_DAILY_LIMIT = 5;
+const PEG_REWARD_CAP = 100000;
+
+// Posts a bounty for the business, from the Workpeg chat. Two ways in:
+//   - { payload }: the chat post. Allowed within PEG_DAILY_LIMIT and PEG_REWARD_CAP; the post is the approval.
+//   - { confirmation_id, payload }: the older path, where the owner approved this exact payload on Bounty.
+// Either way the insert and the audit entry happen in one transaction.
+router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    const client = await pool.connect();
+    try {
+        const body = req.body || {};
+        await assertActiveAccount(req.user.id);
+        await requireAgreement(pool.query.bind(pool), req.user.id, 'creator_protection_business');
+        const fields = pegBounties.validatePegBounty(body.payload);
+        await client.query('BEGIN');
+        if (typeof body.confirmation_id === 'string' && body.confirmation_id !== '') {
+            const used = await tokens.consumeConfirmation(client, {
+                confirmationId: body.confirmation_id, tokenId: req.integration.tokenId, action: 'bounties:publish', payload: body.payload,
+            });
+            if (!used) {
+                throw httpError(403, 'This approval is missing, already used, expired, or does not match these details');
+            }
+        } else {
+            if (Number(fields.reward_amount) > PEG_REWARD_CAP) {
+                throw httpError(422, 'Posts from Workpeg are limited to a reward of ' + PEG_REWARD_CAP + '. Post larger bounties on Bounty.');
+            }
+            const { rows: recent } = await client.query(
+                "SELECT COUNT(*)::int AS n FROM audit_events WHERE actor_id = $1 AND action = 'bounty.created_from_workpeg' AND created_at > NOW() - INTERVAL '24 hours'",
+                [req.user.id]
+            );
+            if (recent[0].n >= PEG_DAILY_LIMIT) {
+                throw httpError(429, 'You have posted ' + PEG_DAILY_LIMIT + ' bounties from Workpeg today. Try again tomorrow.');
+            }
+        }
+        const row = await pegBounties.insertPegBounty(client, req.user.id, fields, false);
+        await logAudit(client.query.bind(client), req.user.id, 'bounty.created_from_workpeg', 'bounty', row.id, {
+            title: row.title,
+        });
+        await client.query('COMMIT');
+        res.status(201).json(row);
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        next(err);
+    } finally {
+        client.release();
+    }
+});
+
+// Reads a budget such as "Reward: 30000 NGN", "budget around 30,000 naira" or "₦30,000" from the
+// request, for drafts where the drafter did not find one. Returns null when nothing sensible is found.
+function readBudget(text) {
+    const m = /(?:reward|budget|pay|price|offer)[^\d]{0,25}(\d[\d,]*(?:\.\d{1,2})?)/i.exec(text) ||
+        /(\d[\d,]*(?:\.\d{1,2})?)\s*(?:naira|ngn|₦)/i.exec(text);
+    if (!m) return null;
+    const amount = Number(m[1].replace(/,/g, ''));
+    return amount >= 1 && amount <= 1000000 ? amount : null;
+}
+
+// A draft from a prompt. Saves nothing. Tasks that need an authorization statement, rules of
+// engagement and an NDA are refused here: the peg cannot set those, so they must be made on Bounty.
+router.post('/ai/bounty-draft', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    try {
+        const prompt = typeof (req.body || {}).prompt === 'string' ? req.body.prompt.trim() : '';
+        if (prompt.length < 10) throw httpError(400, 'Describe the goal in at least 10 characters');
+        if (prompt.length > 4000) throw httpError(400, 'Keep the description under 4000 characters');
+        const result = await generateBountyDraft(req.user.id, prompt);
+        if (!result.draft.suggested_reward) {
+            const amount = readBudget(prompt);
+            if (amount !== null) result.draft.suggested_reward = { amount, note: 'Read from your request. Check it before posting.' };
+        }
+        if (result.draft.requires_authorization) {
+            throw httpError(422, 'This kind of task needs a written authorization and rules of engagement. Create it on Bounty, not from Workpeg.');
+        }
+        res.json(result);
+    } catch (err) { next(err); }
+});
+
+module.exports = router;
