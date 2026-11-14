@@ -2310,11 +2310,15 @@
                 var ownBounties = (data && data.active_bounties) || [];
                 var submissions = (data && data.recent_submissions) || [];
 
+                var firstTake = s.minutes_to_first_take == null ? 'No takers yet' :
+                    (Number(s.minutes_to_first_take) < 60 ? s.minutes_to_first_take + ' min' : Math.round(Number(s.minutes_to_first_take) / 60) + ' h');
                 var stats = role === 'business' ? [
                     ['Active bounties', nz(s.active_bounties, 0)],
                     ['Completed', nz(s.completed_bounties, 0)],
                     ['Pending review', nz(s.pending_submissions, 0)],
-                    ['Total spent', money(nz(s.total_spent, 0))]
+                    ['Total spent', money(nz(s.total_spent, 0))],
+                    ['Average time to first taker', firstTake],
+                    ['Visits confirmed', nz(s.visits_confirmed, 0)]
                 ] : [
                     ['Active bounties', nz(s.active_bounties, 0)],
                     ['Completed', nz(s.completed_bounties, 0)],

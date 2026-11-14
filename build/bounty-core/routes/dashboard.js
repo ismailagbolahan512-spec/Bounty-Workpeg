@@ -20,7 +20,14 @@ router.get('/:userId', authenticate, async(req, res, next) => {
                    (SELECT COUNT(*)::int FROM bounties WHERE business_id = $1 AND status = 'completed') AS completed_bounties,
                    (SELECT COUNT(*)::int FROM submissions s JOIN bounties b ON b.id = s.bounty_id
                       WHERE b.business_id = $1 AND s.status = 'pending') AS pending_submissions,
-                   (SELECT COALESCE(SUM(amount), 0)::float FROM payments WHERE business_id = $1) AS total_spent`, [userId]
+                   (SELECT COALESCE(SUM(amount), 0)::float FROM payments WHERE business_id = $1) AS total_spent,
+                   (SELECT ROUND(AVG(EXTRACT(EPOCH FROM f.first_take - b.created_at) / 60))::int
+                      FROM bounties b
+                      JOIN LATERAL (SELECT MIN(p.created_at) AS first_take FROM bounty_participants p WHERE p.bounty_id = b.id) f
+                        ON f.first_take IS NOT NULL
+                      WHERE b.business_id = $1 AND b.category <> 'hospitality') AS minutes_to_first_take,
+                   (SELECT COUNT(*)::int FROM appointments a JOIN bounties b ON b.id = a.bounty_id
+                      WHERE b.business_id = $1 AND a.status = 'confirmed') AS visits_confirmed`, [userId]
             );
             const bounties = await pool.query(
                 `SELECT id, title, status, deadline, reward_amount, created_at
