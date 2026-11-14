@@ -257,6 +257,16 @@ router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(r
     }
 });
 
+// Reads a budget such as "Reward: 30000 NGN", "budget around 30,000 naira" or "₦30,000" from the
+// request, for drafts where the drafter did not find one. Returns null when nothing sensible is found.
+function readBudget(text) {
+    const m = /(?:reward|budget|pay|price|offer)[^\d]{0,25}(\d[\d,]*(?:\.\d{1,2})?)/i.exec(text) ||
+        /(\d[\d,]*(?:\.\d{1,2})?)\s*(?:naira|ngn|₦)/i.exec(text);
+    if (!m) return null;
+    const amount = Number(m[1].replace(/,/g, ''));
+    return amount >= 1 && amount <= 1000000 ? amount : null;
+}
+
 // A draft from a prompt. Saves nothing. Tasks that need an authorization statement, rules of
 // engagement and an NDA are refused here: the peg cannot set those, so they must be made on Bounty.
 router.post('/ai/bounty-draft', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
@@ -265,6 +275,10 @@ router.post('/ai/bounty-draft', requireScope('bounties:publish'), businessOnly, 
         if (prompt.length < 10) throw httpError(400, 'Describe the goal in at least 10 characters');
         if (prompt.length > 4000) throw httpError(400, 'Keep the description under 4000 characters');
         const result = await generateBountyDraft(req.user.id, prompt);
+        if (!result.draft.suggested_reward) {
+            const amount = readBudget(prompt);
+            if (amount !== null) result.draft.suggested_reward = { amount, note: 'Read from your request. Check it before posting.' };
+        }
         if (result.draft.requires_authorization) {
             throw httpError(422, 'This kind of task needs a written authorization and an NDA. Create it on Bounty, not from Workpeg.');
         }
