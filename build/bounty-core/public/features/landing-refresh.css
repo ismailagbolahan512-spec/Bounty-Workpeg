@@ -145,3 +145,26 @@
         padding: 11px 18px
     }
 }
+
+/* Announcement bar above the landing hero (a link to the How it works page) */
+.announce-bar {
+    display: flex;
+    justify-content: center;
+    padding: 10px 16px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--color-border-subtle, rgba(127, 127, 127, .18));
+}
+
+.announce-bar a {
+    color: var(--color-text-link, inherit);
+    text-decoration: none;
+    font-weight: 600
+}
+
+.announce-bar a:hover {
+    text-decoration: underline
+}
+
+@media (max-width: 720px) {
+    .announce-bar { font-size: 13px; text-align: center }
+}
