@@ -13,7 +13,7 @@ const SUBMISSION_TYPES = ['github', 'url', 'file', 'text'];
 const CATEGORIES = ['dev', 'design', 'content', 'marketing', 'other'];
 const LIMITS = { TITLE_MIN: 3, TITLE_MAX: 200, DESCRIPTION_MIN: 10, DESCRIPTION_MAX: 5000, REWARD_MIN: 0.01, REWARD_MAX: 1000000 };
 
-const FIELDS = ['title', 'description', 'category', 'difficulty', 'reward_amount', 'deadline', 'submission_type', 'currency', 'requirements'];
+const FIELDS = ['title', 'description', 'category', 'difficulty', 'reward_amount', 'deadline', 'submission_type', 'currency', 'requirements', 'max_workers'];
 
 // Returns a clean copy of the fields, or throws a 400 that names the first problem.
 function validatePegBounty(input) {
@@ -49,8 +49,13 @@ function validatePegBounty(input) {
     if (b.requirements !== undefined && b.requirements !== null && typeof b.requirements !== 'string') {
         throw httpError(400, 'Requirements must be text');
     }
+    if (b.max_workers !== undefined && b.max_workers !== null &&
+        !(Number.isInteger(b.max_workers) && b.max_workers >= 1 && b.max_workers <= 50)) {
+        throw httpError(400, 'Workers must be a whole number from 1 to 50');
+    }
     b.currency = validateTaskCurrency(b.currency, undefined);
     return {
+        max_workers: b.max_workers === undefined || b.max_workers === null ? 3 : b.max_workers,
         title: b.title.trim(), description: b.description.trim(), category: b.category, difficulty: b.difficulty,
         reward_amount: amount.toFixed(2), deadline: deadline.toISOString(), submission_type: b.submission_type,
         requirements: b.requirements === undefined ? null : b.requirements, currency: b.currency,
@@ -59,7 +64,7 @@ function validatePegBounty(input) {
 
 // Inserts an open bounty for the business, inside the caller's transaction (client).
 async function insertPegBounty(client, businessId, f, confidential = false) {
-    const execution = resolveExecution({});
+    const execution = resolveExecution({ max_workers: f.max_workers });
     const { rows } = await client.query(
         `INSERT INTO bounties
            (business_id, title, description, category, difficulty, reward_amount, deadline, submission_type, requirements,

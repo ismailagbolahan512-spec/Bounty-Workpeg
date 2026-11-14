@@ -1363,7 +1363,7 @@
                           (bounty.acceptance_criteria && bounty.acceptance_criteria.length ? '<section class="detail-section"><h2>Acceptance criteria</h2>' + criteriaListHTML(bounty.acceptance_criteria) + '<p class="small muted">These checks guide the reviewer. A failed check does not auto-reject work.</p></section>' : '') +
                           checklistSectionHTML(bounty.completion_checklist) +
                           executionDetailHTML(bounty) +
-                          participationHTML(bounty) +
+                          (bounty.category === 'hospitality' ? '' : participationHTML(bounty)) +
                           (bounty.requirements ? '<section class="detail-section"><h2>Requirements</h2><div class="detail-description" style="line-height:1.65">' + escapeHTML(Array.isArray(bounty.requirements) ? bounty.requirements.join('\n') : bounty.requirements) + '</div></section>' : '') +
                         '</article>' +
                         '<aside class="panel detail-sidebar">' +
@@ -1393,7 +1393,7 @@
                         '</aside>' +
                       '</div>' +
                     '</div></section>' +
-                    (!business && open && !bounty.blocked ? submissionDrawerHTML(bounty) : '');
+                    (!business && open && !bounty.blocked && bounty.category !== 'hospitality' ? submissionDrawerHTML(bounty) : '');
 
                 on($('#open-submit-drawer'), 'click', function() { openSubmissionDrawer(bounty); });
                 on($('#submission-drawer-close'), 'click', closeSubmissionDrawer);
