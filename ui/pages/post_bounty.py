@@ -1,41 +1,83 @@
-"""Ask Bounty to make a task. A business types what it needs, Bounty's AI drafts the
-task, and every step is written into the chat here.
+"""Ask Bounty to make a task, in MOCK mode: the peg keeps everything in this business's
+Workpeg tables, so the whole flow works while Workpeg cannot reach Bounty's server.
 
-Nothing is posted by the draft. The flow is:
-  1. the prompt goes to Bounty's drafter (POST /ai/bounty-draft), which saves nothing;
-  2. the draft appears in the chat, where you check it and can change the reward;
-  3. Post sends it (POST /bounties). Pressing Post here is your approval. Bounty limits
-     how many posts a day and how large a reward a post from Workpeg may carry.
+  1. you type what the task is; the peg drafts it with local rules (no outside call);
+  2. the draft appears in the chat, where you set the reward and check the deadline;
+  3. Post writes a row to the Bounties table; updates appear in the chat.
 
-The token is the one saved on the Services page (a browser cookie). It needs bounties:publish.
+Set MOCK to False to send the same steps to Bounty's live API instead. That needs
+Workpeg to reach the server and a saved token (Services page).
 """
 from workpeg.ui import (
     App, State, Padding, Column, Row, Container, ConstrainedBox, Spacer,
-    Text, Button, Link, Input, TextInput, cookie, dates, http, set_interval, set_title, store,
+    Text, Button, Link, Input, TextInput, Tag, cookie, set_interval, set_title, store,
+    workpeg,
 )
 
+MOCK = True
 API = "https://bounty-workpeg.onrender.com/api/peg"
 TOKEN_COOKIE = "bounty_token"
+BOUNTY_NS = "bounty-mock-bounties"
+UPDATE_NS = "bounty-mock-updates"
 
 
 class PostBountyPage(App):
     token = State("")
     prompt = State("")
     messages = State([])          # the chat: {"who": "you" | "bounty", "text": "..."}
-    draft = State({})             # the last draft from Bounty, as returned
-    reward = State("")            # reward in naira, prefilled from the draft, editable
+    draft = State({})             # the current draft: title, description, deadline, missing
+    reward = State("")            # reward in naira, typed by you
+    deadline = State("")          # deadline phrase from the draft, editable
+    posted = State([])            # tasks already posted from this business
     working = State(False)
-    cursor = State("")            # the newest update already shown, as an ISO time in UTC
+    ready = State(False)          # tables found or created
+    cursor = State(0)             # how many update rows are already in the chat
+    bounties_table = State("")
+    updates_table = State("")
 
     async def on_mount(self):
         store.page_title = "Ask Bounty"
         set_title("Ask Bounty")
-        # Only updates from now on: the page does not replay old notifications.
-        self.cursor = dates.now("UTC", True) + "Z"
         set_interval(self.check_updates, 30000)
         self.token = cookie.get(TOKEN_COOKIE)
-        if self.token != "":
-            self.messages = [{"who": "bounty", "text": "Describe the task you need. I will draft it. Check it, then press Post to publish it on Bounty."}]
+        if MOCK or self.token != "":
+            self.messages = [{"who": "bounty", "text": "Describe the task you need. I will draft it. Set the reward and check the deadline, then press Post."}]
+            await self.setup()
+
+    async def setup(self):
+        try:
+            self.bounties_table = await self.find_or_make(BOUNTY_NS, "Bounties (mock)", [
+                {"id": "title", "name": "Title", "type": "text", "position": 1000, "required": True},
+                {"id": "description", "name": "Description", "type": "text", "position": 2000},
+                {"id": "reward", "name": "Reward (NGN)", "type": "text", "position": 3000},
+                {"id": "deadline", "name": "Deadline", "type": "text", "position": 4000},
+                {"id": "status", "name": "Status", "type": "text", "position": 5000},
+            ])
+            self.updates_table = await self.find_or_make(UPDATE_NS, "Updates (mock)", [
+                {"id": "message", "name": "Message", "type": "text", "position": 1000, "required": True},
+            ])
+            updates = await workpeg.get_rows(self.updates_table, limit=200)
+            self.cursor = len(updates)
+            await self.load_posted()
+            self.ready = True
+        except Exception as e:
+            self.say("bounty", "I could not reach this business's task tables: " + e.message)
+
+    async def find_or_make(self, ns, name, columns):
+        tables = await workpeg.get_tables(ns)
+        if len(tables) > 0:
+            return tables[0]["uuid"]
+        made = await workpeg.create_table({
+            "name": name,
+            "namespace": ns,
+            "permission": "760",
+            "columns": columns,
+        })
+        return made["uuid"]
+
+    async def load_posted(self):
+        rows = await workpeg.get_rows(self.bounties_table, limit=50)
+        self.posted = rows
 
     def set_prompt(self, value):
         self.prompt = value
@@ -47,80 +89,99 @@ class PostBountyPage(App):
         self.messages = self.messages + [{"who": who, "text": text}]
 
     async def check_updates(self):
-        # Runs every 30 seconds while this page is open. Shows what happened on the business's
-        # tasks since the last check, such as a worker taking one. A failed check stays quiet.
-        if self.token == "" or self.working:
+        # Every 30 seconds: show updates that arrived since the last check, oldest first.
+        if not self.ready or self.working:
             return
         try:
-            items = await http.get(f"{API}/notifications?since={self.cursor}", auth=self.token)
-            for n in items:
-                self.say("bounty", "Update: " + n.get("message", ""))
-                self.cursor = n.get("created_at", self.cursor)
+            rows = await workpeg.get_rows(self.updates_table, limit=200)
+            fresh = len(rows) - self.cursor
+            if fresh > 0:
+                for r in rows[:fresh][::-1]:
+                    self.say("bounty", "Update: " + r["data"].get("message", ""))
+                self.cursor = len(rows)
         except Exception:
             pass
+
+    def find_deadline(self, text):
+        low = text.lower()
+        days = ["today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        found = ""
+        for d in days:
+            if d in low:
+                found = d
+        return found
+
+    def make_draft(self, text):
+        title = text[:80]
+        if len(text) > 80:
+            title = title + "..."
+        deadline = self.find_deadline(text)
+        missing = []
+        if deadline == "":
+            missing.append("a deadline, for example by Friday")
+        return {"title": title, "description": text, "deadline": deadline, "missing": missing}
 
     async def send_prompt(self):
         text = self.prompt.strip()
         if self.working or text == "":
             return
-        if self.token == "":
-            self.say("bounty", "Connect your Bounty account on the Services page first. Use a token with bounties:publish.")
+        if not self.ready:
+            self.say("bounty", "I am still connecting to this business. Try again in a moment.")
             return
         self.say("you", text)
         self.prompt = ""
-        self.working = True
-        try:
-            res = await http.post(f"{API}/ai/bounty-draft", {"prompt": text}, auth=self.token)
-            d = res.get("draft", {})
-            self.draft = d
-            self.reward = str(d.get("suggested_reward", {}).get("amount", ""))
-            source = "Bounty's AI" if res.get("source") == "ai" else "Bounty's built-in rules (AI is not connected on the server)"
-            self.say("bounty", f"Drafted with {source}: \"{d.get('title', '')}\". Check the reward below, then press Post to publish it.")
-            for q in d.get("missing_info", []):
-                self.say("bounty", f"Missing: {q}")
-        except Exception as e:
-            self.say("bounty", f"I could not draft that: {e.message}")
-        self.working = False
-
-    def payload(self):
-        d = self.draft
-        deadline = d.get("suggested_deadline") or ""
-        requirements = "\n".join(d.get("requirements", []))
-        return {
-            "title": d.get("title", ""),
-            "description": d.get("description", ""),
-            "category": d.get("category", "other"),
-            "difficulty": d.get("difficulty", "medium"),
-            "reward_amount": self.reward.strip(),
-            "deadline": deadline,
-            "submission_type": d.get("submission_type", "url"),
-            "requirements": requirements,
-            "currency": "NGN",
-        }
+        d = self.make_draft(text)
+        self.draft = d
+        self.deadline = d["deadline"]
+        self.reward = ""
+        self.say("bounty", "Drafted: \"" + d["title"] + "\". Set the reward below, check the deadline, then press Post.")
+        for q in d["missing"]:
+            self.say("bounty", "Missing: " + q)
 
     async def post_bounty(self):
-        # Pressing Post in this chat is the owner's approval. Bounty allows it within a daily
-        # limit and a reward cap, and records every post in its audit log.
+        # Pressing Post in this chat is the owner's approval.
         if self.working or self.draft == {}:
             return
-        p = self.payload()
-        if p["reward_amount"] == "" or p["deadline"] == "":
-            self.say("bounty", "Set a reward, and make sure the draft has a deadline, before posting.")
+        if self.reward.strip() == "" or self.deadline.strip() == "":
+            self.say("bounty", "Set the reward and the deadline before posting.")
             return
         self.working = True
         try:
-            res = await http.post(f"{API}/bounties", {"payload": p}, auth=self.token)
+            rows = await workpeg.get_rows(self.bounties_table, limit=200)
+            await workpeg.add_row(self.bounties_table, {
+                "data": {
+                    "title": self.draft.get("title", ""),
+                    "description": self.draft.get("description", ""),
+                    "reward": self.reward.strip(),
+                    "deadline": self.deadline.strip(),
+                    "status": "open",
+                },
+                "position": (len(rows) + 1) * 1000,
+            })
             self.draft = {}
-            self.say("bounty", f"Posted. Your task is live on Bounty (id {res.get('id', '')}).")
+            self.reward = ""
+            self.deadline = ""
+            await self.load_posted()
+            self.say("bounty", "Posted. Your task is live in the list below.")
         except Exception as e:
-            self.say("bounty", f"Not posted: {e.message}")
+            self.say("bounty", "Not posted: " + e.message)
         self.working = False
 
+    async def demo_take(self):
+        # Demo only: stands in for a worker taking a task, so the update flow can be shown.
+        try:
+            rows = await workpeg.get_rows(self.updates_table, limit=200)
+            await workpeg.add_row(self.updates_table, {
+                "data": {"message": "A worker has taken one of your tasks."},
+                "position": (len(rows) + 1) * 1000,
+            })
+        except Exception as e:
+            self.say("bounty", "Could not add the update: " + e.message)
+
     def build(self):
-        if self.token == "":
+        if not MOCK and self.token == "":
             return self.no_token()
-        else:
-            return self.chat()
+        return self.chat()
 
     def no_token(self):
         return Padding(
@@ -151,11 +212,13 @@ class PostBountyPage(App):
                     self.draft_card(),
                     Row(
                         Input(TextInput(value=self.prompt, on_change=self.set_prompt,
-                                        placeholder="Example: clean and repair the three guest rooms in Lekki before Friday"),
+                                        placeholder="Example: clean and repair the three guest rooms in Lekki by Friday"),
                               label="Your request"),
                         self.send_button(),
                         gap=8, align="end",
                     ),
+                    self.posted_list(),
+                    self.demo_button(),
                     gap=16,
                 ),
                 max_width=720,
@@ -179,12 +242,34 @@ class PostBountyPage(App):
                     Text(self.draft.get("description", ""), variant="muted"),
                     Input(TextInput(value=self.reward, on_change=self.set_reward, placeholder="25000"),
                           label="Reward (NGN)"),
-                    Text(f"Deadline: {self.draft.get('suggested_deadline', '') or 'not set'}", variant="muted"),
+                    Text("Deadline: " + self.deadline, variant="muted"),
                     Row(Spacer(), self.approve_button()),
                     gap=12,
                 ),
                 variant="card", padding=16,
             )
+
+    def posted_list(self):
+        if len(self.posted) == 0:
+            return Column()
+        else:
+            return Container(
+                Column(
+                    Text("Your tasks", variant="heading"),
+                    *[Row(Text(p["data"].get("title", ""), weight="semibold"),
+                          Spacer(),
+                          Tag(p["data"].get("status", "open"), tone="success"),
+                          gap=8, align="center") for p in self.posted],
+                    gap=8,
+                ),
+                variant="card", padding=16,
+            )
+
+    def demo_button(self):
+        if MOCK:
+            return Button("Demo: a worker takes a task", variant="outline-gray", on_click=self.demo_take)
+        else:
+            return Column()
 
     def send_button(self):
         if self.working:
@@ -196,4 +281,4 @@ class PostBountyPage(App):
         if self.working:
             return Button("Posting...", disabled=True)
         else:
-            return Button("Post to Bounty", on_click=self.post_bounty)
+            return Button("Post", on_click=self.post_bounty)
