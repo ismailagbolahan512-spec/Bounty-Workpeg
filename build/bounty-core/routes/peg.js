@@ -209,6 +209,23 @@ router.post('/confirmations', async(req, res, next) => {
     } catch (err) { next(err); }
 });
 
+// Updates for the business: notifications about its tasks, such as a worker taking one.
+// Returns those created after `since` (an ISO time), oldest first. Without `since`, the last 24 hours.
+// The peg polls this with its own cursor, so a notification appears once.
+router.get('/notifications', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    try {
+        const sinceRaw = typeof req.query.since === 'string' ? new Date(req.query.since) : null;
+        const since = sinceRaw && !Number.isNaN(sinceRaw.getTime()) ? sinceRaw : new Date(Date.now() - 24 * 3600 * 1000);
+        const { rows } = await pool.query(
+            `SELECT id, message, link, created_at FROM notifications
+             WHERE user_id = $1 AND link LIKE '#/bounties/%' AND created_at > $2
+             ORDER BY created_at ASC LIMIT 50`,
+            [req.user.id, since]
+        );
+        res.json(rows);
+    } catch (err) { next(err); }
+});
+
 // Limits for posting from Workpeg chat without a separate approval on Bounty. The chat post is
 // the owner's approval, so these caps keep one connection token from posting much at once.
 const PEG_DAILY_LIMIT = 5;

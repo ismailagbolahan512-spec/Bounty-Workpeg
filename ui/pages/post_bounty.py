@@ -11,7 +11,7 @@ The token is the one saved on the Services page (a browser cookie). It needs bou
 """
 from workpeg.ui import (
     App, State, Padding, Column, Row, Container, ConstrainedBox, Spacer,
-    Text, Button, Link, Input, TextInput, cookie, http, set_title, store,
+    Text, Button, Link, Input, TextInput, cookie, dates, http, set_interval, set_title, store,
 )
 
 API = "https://bounty-workpeg.onrender.com/api/peg"
@@ -25,10 +25,14 @@ class PostBountyPage(App):
     draft = State({})             # the last draft from Bounty, as returned
     reward = State("")            # reward in naira, prefilled from the draft, editable
     working = State(False)
+    cursor = State("")            # the newest update already shown, as an ISO time in UTC
 
     async def on_mount(self):
         store.page_title = "Ask Bounty"
         set_title("Ask Bounty")
+        # Only updates from now on: the page does not replay old notifications.
+        self.cursor = dates.now("UTC", True) + "Z"
+        set_interval(self.check_updates, 30000)
         self.token = cookie.get(TOKEN_COOKIE)
         if self.token != "":
             self.messages = [{"who": "bounty", "text": "Describe the task you need. I will draft it. Check it, then press Post to publish it on Bounty."}]
@@ -41,6 +45,19 @@ class PostBountyPage(App):
 
     def say(self, who, text):
         self.messages = self.messages + [{"who": who, "text": text}]
+
+    async def check_updates(self):
+        # Runs every 30 seconds while this page is open. Shows what happened on the business's
+        # tasks since the last check, such as a worker taking one. A failed check stays quiet.
+        if self.token == "" or self.working:
+            return
+        try:
+            items = await http.get(f"{API}/notifications?since={self.cursor}", auth=self.token)
+            for n in items:
+                self.say("bounty", "Update: " + n.get("message", ""))
+                self.cursor = n.get("created_at", self.cursor)
+        except Exception:
+            pass
 
     async def send_prompt(self):
         text = self.prompt.strip()
