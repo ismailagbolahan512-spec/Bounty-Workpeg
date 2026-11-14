@@ -8,12 +8,14 @@
 //   GET  /api/peg/business/appointments   the business's live visits (services:read)
 //   POST /api/peg/confirmations           ask the user to approve a sensitive action
 //   POST /api/peg/bounties                post a bounty, once the owner has approved these exact details (bounties:publish)
+//   POST /api/peg/ai/bounty-draft         AI draft from a prompt; saves nothing (bounties:publish)
 
 const express = require('express');
 const { pool } = require('../db');
 const { authenticateIntegration, requireScope, httpError } = require('../middleware/auth');
 const { logAudit, assertActiveAccount, requireAgreement } = require('../services/protection');
 const pegBounties = require('../services/peg-bounties');
+const { generateBountyDraft } = require('../services/ai');
 const tokens = require('../services/integration-tokens');
 const hs = require('../services/hospitality');
 const { flags } = require('../services/schema-flags');
@@ -237,6 +239,21 @@ router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(r
     } finally {
         client.release();
     }
+});
+
+// A draft from a prompt. Saves nothing. Tasks that need an authorization statement, rules of
+// engagement and an NDA are refused here: the peg cannot set those, so they must be made on Bounty.
+router.post('/ai/bounty-draft', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    try {
+        const prompt = typeof (req.body || {}).prompt === 'string' ? req.body.prompt.trim() : '';
+        if (prompt.length < 10) throw httpError(400, 'Describe the goal in at least 10 characters');
+        if (prompt.length > 4000) throw httpError(400, 'Keep the description under 4000 characters');
+        const result = await generateBountyDraft(req.user.id, prompt);
+        if (result.draft.requires_authorization) {
+            throw httpError(422, 'This kind of task needs a written authorization and an NDA. Create it on Bounty, not from Workpeg.');
+        }
+        res.json(result);
+    } catch (err) { next(err); }
 });
 
 module.exports = router;

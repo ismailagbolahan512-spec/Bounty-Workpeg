@@ -1,154 +1,126 @@
-"""The post-a-bounty page. A business types a bounty here, approves it on Bounty,
-then posts it. Bounty is the system of record: this page holds no copy of the
-bounty, only the form and the approval id until the post goes through.
+"""Ask Bounty to make a task. A business types what it needs, Bounty's AI drafts the
+task, and every step is written into the chat here.
 
-Posting is two steps on purpose. Step one asks Bounty for an approval of the exact
-details (POST /confirmations). The owner approves on Bounty's Connections page.
-Step two posts (POST /bounties) with that approval, which Bounty uses once.
-The token comes from the Services page (the same browser cookie). It needs the
-bounties:publish scope.
+Nothing is posted by the draft. The flow is:
+  1. the prompt goes to Bounty's drafter (POST /ai/bounty-draft), which saves nothing;
+  2. the draft appears in the chat, and "Request approval" asks Bounty to approve the exact details;
+  3. the owner approves on Bounty's Connections page;
+  4. "Post" publishes it (POST /bounties), which uses that approval once.
+
+The token is the one saved on the Services page (a browser cookie). It needs bounties:publish.
 """
 from workpeg.ui import (
     App, State, Padding, Column, Row, Container, ConstrainedBox, Spacer,
-    Text, Button, Link, Input, TextInput, Select, cookie, http, set_title, store,
+    Text, Button, Link, Input, TextInput, cookie, http, set_title, store,
 )
 
 API = "https://bounty-workpeg.onrender.com/api/peg"
 TOKEN_COOKIE = "bounty_token"
-# Deadlines are typed in Lagos time (UTC+1), the time at the place of the work.
-LAGOS_OFFSET = "+01:00"
-
-CATEGORIES = ["dev", "design", "content", "marketing", "other"]
-DIFFICULTIES = ["easy", "medium", "hard"]
-SUBMISSION_TYPES = ["text", "url", "github", "file"]
 
 
 class PostBountyPage(App):
     token = State("")
-    title = State("")
-    description = State("")
-    category = State("dev")
-    difficulty = State("easy")
-    reward = State("")
-    deadline = State("")          # typed as 2026-11-20T14:00 (Lagos time)
-    submission_type = State("text")
-    requirements = State("")
-    confirmation_id = State("")   # set once Bounty has recorded the approval request
-    sent = State({})              # the exact details that were sent for approval
-    posted_link = State("")
-    notice = State("")
-    error = State("")
-    busy = State(False)
+    prompt = State("")
+    messages = State([])          # the chat: {"who": "you" | "bounty", "text": "..."}
+    draft = State({})             # the last draft from Bounty, as returned
+    reward = State("")            # reward in naira, prefilled from the draft, editable
+    confirmation_id = State("")   # set once Bounty records the approval request
+    sent = State({})              # the exact payload that was sent for approval
+    working = State(False)
 
     async def on_mount(self):
-        store.page_title = "Post a bounty"
-        set_title("Post a bounty")
+        store.page_title = "Ask Bounty"
+        set_title("Ask Bounty")
         self.token = cookie.get(TOKEN_COOKIE)
+        if self.token != "":
+            self.messages = [{"who": "bounty", "text": "Describe the task you need. I will draft it. Nothing is posted until you approve it."}]
 
-    def set_title_text(self, value):
-        self.title = value
-        self.confirmation_id = ""
-
-    def set_description(self, value):
-        self.description = value
-        self.confirmation_id = ""
-
-    def set_category(self, value):
-        self.category = value
-        self.confirmation_id = ""
-
-    def set_difficulty(self, value):
-        self.difficulty = value
-        self.confirmation_id = ""
+    def set_prompt(self, value):
+        self.prompt = value
 
     def set_reward(self, value):
         self.reward = value
         self.confirmation_id = ""
 
-    def set_deadline(self, value):
-        self.deadline = value
-        self.confirmation_id = ""
+    def say(self, who, text):
+        self.messages = self.messages + [{"who": who, "text": text}]
 
-    def set_submission_type(self, value):
-        self.submission_type = value
-        self.confirmation_id = ""
+    async def send_prompt(self):
+        text = self.prompt.strip()
+        if self.working or text == "":
+            return
+        if self.token == "":
+            self.say("bounty", "Connect your Bounty account on the Services page first. Use a token with bounties:publish.")
+            return
+        self.say("you", text)
+        self.prompt = ""
+        self.working = True
+        try:
+            res = await http.post(f"{API}/ai/bounty-draft", {"prompt": text}, auth=self.token)
+            d = res.get("draft", {})
+            self.draft = d
+            self.reward = str(d.get("suggested_reward", {}).get("amount", ""))
+            self.confirmation_id = ""
+            source = "Bounty's AI" if res.get("source") == "ai" else "Bounty's built-in rules (AI is not connected on the server)"
+            self.say("bounty", f"Drafted with {source}: \"{d.get('title', '')}\". Check the reward below, then request approval.")
+            for q in d.get("missing_info", []):
+                self.say("bounty", f"Missing: {q}")
+        except Exception as e:
+            self.say("bounty", f"I could not draft that: {e.message}")
+        self.working = False
 
-    def set_requirements(self, value):
-        self.requirements = value
-        self.confirmation_id = ""
-
-    def details(self):
-        # The same shape Bounty validates. The approval covers exactly this object.
+    def payload(self):
+        d = self.draft
+        deadline = d.get("suggested_deadline") or ""
+        requirements = "\n".join(d.get("requirements", []))
         return {
-            "title": self.title.strip(),
-            "description": self.description.strip(),
-            "category": self.category,
-            "difficulty": self.difficulty,
+            "title": d.get("title", ""),
+            "description": d.get("description", ""),
+            "category": d.get("category", "other"),
+            "difficulty": d.get("difficulty", "medium"),
             "reward_amount": self.reward.strip(),
-            "deadline": self.deadline.strip() + ":00" + LAGOS_OFFSET,
-            "submission_type": self.submission_type,
-            "requirements": self.requirements.strip(),
+            "deadline": deadline,
+            "submission_type": d.get("submission_type", "url"),
+            "requirements": requirements,
             "currency": "NGN",
         }
 
-    def check_form(self):
-        if self.token == "":
-            return "Connect on the Services page first, with a token that has bounties:publish."
-        if len(self.title.strip()) < 3:
-            return "Add a title of at least 3 characters."
-        if len(self.description.strip()) < 10:
-            return "Describe the bounty in at least 10 characters."
-        if self.reward.strip() == "":
-            return "Add the reward amount, for example 25000."
-        if len(self.deadline.strip()) != 16:
-            return "Set the deadline as 2026-11-20T14:00 (Lagos time)."
-        return ""
-
     async def request_approval(self):
-        if self.busy:
+        if self.working or self.draft == {}:
             return
-        problem = self.check_form()
-        if problem != "":
-            self.error = problem
+        p = self.payload()
+        if p["reward_amount"] == "" or p["deadline"] == "":
+            self.say("bounty", "Set a reward, and make sure the draft has a deadline, before requesting approval.")
             return
-        self.busy = True
-        self.error = ""
-        self.posted_link = ""
+        self.working = True
         try:
-            details = self.details()
-            res = await http.post(f"{API}/confirmations",
-                                  {"action": "bounties:publish", "payload": details},
-                                  auth=self.token)
-            self.sent = details
+            res = await http.post(f"{API}/confirmations", {"action": "bounties:publish", "payload": p}, auth=self.token)
+            self.sent = p
             self.confirmation_id = res.get("id", "")
-            self.notice = "Approval requested. Open Bounty → Connections, approve the bounty, then press Post."
+            self.say("bounty", "Approval requested. Open Bounty, go to Connections, approve it, then press Post here.")
         except Exception as e:
-            self.error = e.message
-        self.busy = False
+            self.say("bounty", f"Approval was not requested: {e.message}")
+        self.working = False
 
     async def post_bounty(self):
-        if self.busy or self.confirmation_id == "":
+        if self.working or self.confirmation_id == "":
             return
-        self.busy = True
-        self.error = ""
+        self.working = True
         try:
-            res = await http.post(f"{API}/bounties",
-                                  {"confirmation_id": self.confirmation_id, "payload": self.sent},
-                                  auth=self.token)
-            self.posted_link = res.get("id", "")
+            res = await http.post(f"{API}/bounties", {"confirmation_id": self.confirmation_id, "payload": self.sent}, auth=self.token)
             self.confirmation_id = ""
             self.sent = {}
-            self.notice = "Posted to Bounty."
+            self.draft = {}
+            self.say("bounty", f"Posted to Bounty. Task id: {res.get('id', '')}.")
         except Exception as e:
-            # Keep the approval: fix the cause (or approve again) and press Post again.
-            self.error = e.message
-        self.busy = False
+            self.say("bounty", f"Not posted: {e.message}. If the approval was used or expired, request approval again.")
+        self.working = False
 
     def build(self):
         if self.token == "":
             return self.no_token()
         else:
-            return self.form()
+            return self.chat()
 
     def no_token(self):
         return Padding(
@@ -167,64 +139,67 @@ class PostBountyPage(App):
             all=24,
         )
 
-    def form(self):
+    def chat(self):
         return Padding(
             ConstrainedBox(
                 Column(
-                    Text("Post a bounty", variant="heading"),
-                    Text("Describe the work. You approve it on Bounty, then post it here.", variant="muted"),
+                    Text("Ask Bounty to make a task", variant="heading"),
                     Container(
-                        Column(
-                            Input(TextInput(value=self.title, on_change=self.set_title_text,
-                                            placeholder="Fix the lobby sign-in tablet"),
-                                  label="Title"),
-                            Input(TextInput(value=self.description, on_change=self.set_description,
-                                            placeholder="What needs doing and how we will know it is done"),
-                                  label="Description"),
-                            Select(options=["dev", "design", "content", "marketing", "other"], value=self.category,
-                                   on_change=self.set_category, label="Category"),
-                            Select(options=["easy", "medium", "hard"], value=self.difficulty,
-                                   on_change=self.set_difficulty, label="Difficulty"),
-                            Input(TextInput(value=self.reward, on_change=self.set_reward,
-                                            placeholder="25000"),
-                                  label="Reward (NGN)", hint="Whole naira, up to two decimals"),
-                            Input(TextInput(value=self.deadline, on_change=self.set_deadline,
-                                            placeholder="2026-11-20T14:00"),
-                                  label="Deadline (Lagos time)"),
-                            Select(options=["text", "url", "github", "file"], value=self.submission_type,
-                                   on_change=self.set_submission_type, label="How work is submitted"),
-                            Input(TextInput(value=self.requirements, on_change=self.set_requirements),
-                                  label="Requirements (optional)"),
-                            Text(self.error, tone="danger", visible=self.error != ""),
-                            Text(self.notice, tone="info", visible=self.notice != "" and self.error == ""),
-                            Row(
-                                Spacer(),
-                                self.approve_button(),
-                                self.post_button(),
-                                gap=8,
-                            ),
-                            Link("View on Bounty →",
-                                 href=f"https://bounty-workpeg.onrender.com/#/bounties/{self.posted_link}",
-                                 visible=self.posted_link != ""),
-                            gap=16,
-                        ),
-                        variant="card", padding=24,
+                        Column(*[self.bubble(m) for m in self.messages], gap=12),
+                        variant="card", padding=16,
+                    ),
+                    self.draft_card(),
+                    Row(
+                        Input(TextInput(value=self.prompt, on_change=self.set_prompt,
+                                        placeholder="Example: clean and repair the three guest rooms in Lekki before Friday"),
+                              label="Your request"),
+                        self.send_button(),
+                        gap=8, align="end",
                     ),
                     gap=16,
                 ),
-                max_width=640,
+                max_width=720,
             ),
             all=24,
         )
 
-    def approve_button(self):
-        if self.busy:
+    def bubble(self, m):
+        if m.get("who", "") == "you":
+            return Row(Spacer(), Container(Text(m.get("text", "")), variant="card", padding=12))
+        else:
+            return Text(m.get("text", ""), variant="muted")
+
+    def draft_card(self):
+        if self.draft == {}:
+            return Column()
+        else:
+            return Container(
+                Column(
+                    Text(self.draft.get("title", ""), variant="heading"),
+                    Text(self.draft.get("description", ""), variant="muted"),
+                    Input(TextInput(value=self.reward, on_change=self.set_reward, placeholder="25000"),
+                          label="Reward (NGN)"),
+                    Text(f"Deadline: {self.draft.get('suggested_deadline', '') or 'not set'}", variant="muted"),
+                    Row(Spacer(), self.approve_button()),
+                    gap=12,
+                ),
+                variant="card", padding=16,
+            )
+
+    def send_button(self):
+        if self.working:
             return Button("Working...", disabled=True)
         else:
-            return Button("Request approval", variant="outline-gray", on_click=self.request_approval)
+            return Button("Send", on_click=self.send_prompt)
 
-    def post_button(self):
-        if self.busy or self.confirmation_id == "":
-            return Button("Post bounty", disabled=True)
+    def approve_button(self):
+        if self.working:
+            return Button("Working...", disabled=True)
+        elif self.confirmation_id == "":
+            return Button("Request approval", variant="outline-gray", on_click=self.request_approval)
         else:
-            return Button("Post bounty", on_click=self.post_bounty)
+            return Row(
+                Button("Request approval again", variant="outline-gray", on_click=self.request_approval),
+                Button("Post", on_click=self.post_bounty),
+                gap=8,
+            )
