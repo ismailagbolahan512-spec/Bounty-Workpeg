@@ -12,7 +12,7 @@ Both modes: you type the task; the peg drafts it with local rules; you set the r
 deadline; Post. In live mode the deadline is a date such as 2026-11-20.
 """
 from workpeg.ui import (
-    App, State, Padding, Column, Row, Container, ConstrainedBox, Spacer,
+    App, State, Padding, Column, Row, Container, ConstrainedBox, Spacer, Expanded, ListView,
     Text, Button, Input, TextInput, Switch, Tag, set_interval, set_title, store,
     http, workpeg,
 )
@@ -345,31 +345,37 @@ class PostBountyPage(App):
         return self.chat()
 
     def chat(self):
-        return Padding(
-            ConstrainedBox(
-                Column(
-                    Text("Ask Bounty to make a task", variant="heading"),
-                    self.mode_box(),
-                    Container(
-                        Column(*[self.bubble(m) for m in self.messages], gap=12),
-                        variant="card", padding=16,
+        return Column(
+            Expanded(
+                ListView(
+                    Padding(
+                        ConstrainedBox(
+                            Column(
+                                Text("Ask Bounty to make a task", variant="heading"),
+                                self.mode_box(),
+                                Container(
+                                    Column(*[self.bubble(m) for m in self.messages], gap=12),
+                                    variant="card", padding=16,
+                                ),
+                                self.draft_card(),
+                                Row(
+                                    Input(TextInput(value=self.prompt, on_change=self.set_prompt,
+                                                    placeholder="Example: clean and repair the three guest rooms in Lekki by Friday"),
+                                          label="Your request"),
+                                    self.send_button(),
+                                    gap=8, align="end",
+                                ),
+                                self.posted_list(),
+                                self.demo_button(),
+                                gap=16,
+                            ),
+                            max_width=720,
+                        ),
+                        all=24,
                     ),
-                    self.draft_card(),
-                    Row(
-                        Input(TextInput(value=self.prompt, on_change=self.set_prompt,
-                                        placeholder="Example: clean and repair the three guest rooms in Lekki by Friday"),
-                              label="Your request"),
-                        self.send_button(),
-                        gap=8, align="end",
-                    ),
-                    self.posted_list(),
-                    self.demo_button(),
                     gap=16,
-                    scroll="auto",
                 ),
-                max_width=720,
             ),
-            all=24,
         )
 
     def mode_box(self):
