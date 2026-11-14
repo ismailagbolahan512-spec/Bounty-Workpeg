@@ -19,7 +19,8 @@ missing, the strip keeps a tonal panel, so the page works without photos.
 
 ## Specification
 
-- Landscape, 4:3, at least 1200 × 900 px, under 300 KB after compression (JPEG, quality ~78).
+- Landscape, 4:3, at least 1200 × 900 px for large views, under 300 KB after compression (JPEG, quality ~78).
+  The discovery strips display at 112 × 84 px, so the current 450–600 px images are enough for them. Use larger files before using photos in bigger layouts.
 - One person doing the work, in the real setting, with the task visible.
 - Natural daylight or practical light only. No heavy filters, no duotone, no stock poses.
 - The subject is not centred in the strip; leave room on the left for the crop to breathe.
@@ -36,3 +37,8 @@ missing, the strip keeps a tonal panel, so the page works without photos.
 
 Record the source and licence of each file in `docs/service-photos-credits.md` before
 the site goes live.
+
+## Current status
+
+- Added: short_let, restaurant, bar_club, catering, spa_wellness, other (cropped to 4:3 from preview images).
+- Missing: hotel (the supplied image carries an Unsplash+ watermark and needs a proper licence), event_venue (no suitable image supplied yet).
