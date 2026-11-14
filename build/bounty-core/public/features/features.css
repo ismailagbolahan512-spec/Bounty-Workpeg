@@ -32,3 +32,124 @@
 .form-row { display: flex; align-items: center; gap: 10px; }
 .form-row input { flex: 1; }
 .h4 { font-size: 1.05rem; margin: 24px 0 8px; }
+
+
+/* ============ HOSPITALITY HERO ============
+   Terracotta and cream, the colours of a warm kitchen and a welcoming lobby.
+   Fixed on purpose: white on #A8482A is 5.8:1 and stays readable in light and dark modes. */
+
+.hosp-page {
+    --hosp-terracotta: #A8482A;
+    --hosp-cream: #F7EBDD;
+    --hosp-ink: #2A1A12;
+    --hosp-gold: #B8862B;
+    display: grid;
+    gap: 32px
+}
+
+.hosp-hero {
+    display: grid;
+    gap: 24px;
+    padding: 32px;
+    border-radius: 18px;
+    background: var(--hosp-terracotta);
+    color: #FFFFFF;
+    position: relative;
+    overflow: hidden
+}
+
+.hosp-hero::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    border: 2px solid var(--hosp-gold);
+    opacity: .5;
+    pointer-events: none
+}
+
+.hosp-eyebrow {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--hosp-cream)
+}
+
+.hosp-hero h1 {
+    margin: 0 0 12px;
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.15;
+    color: #FFFFFF
+}
+
+.hosp-lead {
+    margin: 0 0 20px;
+    max-width: 58ch;
+    color: var(--hosp-cream);
+    line-height: 1.6
+}
+
+.hosp-cta {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: #FFFFFF;
+    color: var(--hosp-terracotta);
+    font-weight: 700;
+    text-decoration: none
+}
+
+.hosp-cta:hover,
+.hosp-cta:focus-visible {
+    background: var(--hosp-cream)
+}
+
+.hosp-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    position: relative;
+    z-index: 1
+}
+
+.hosp-stat {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, .14);
+    border: 1px solid rgba(255, 255, 255, .3)
+}
+
+.hosp-stat strong {
+    display: block;
+    font-size: 28px;
+    line-height: 1.1;
+    color: #FFFFFF
+}
+
+.hosp-stat span {
+    font-size: 14px;
+    color: #FFFFFF
+}
+
+.hosp-section {
+    display: grid;
+    gap: 12px
+}
+
+@media (min-width: 760px) {
+    .hosp-hero {
+        grid-template-columns: 1.4fr 1fr;
+        align-items: end;
+        padding: 40px
+    }
+    .hosp-stats {
+        grid-template-columns: 1fr
+    }
+}

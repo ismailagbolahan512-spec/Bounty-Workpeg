@@ -59,6 +59,24 @@
         }
     });
 
+    // ------------------------------------------------------------------ hero
+    // A warm welcome for the page. Colours are fixed (terracotta and cream) so the white text
+    // keeps 5.8:1 contrast in light and dark modes. Counts come from data the page already loads.
+    function greeting() {
+        var h = new Date().getHours();
+        return h < 12 ? 'Good morning' : (h < 17 ? 'Good afternoon' : 'Good evening');
+    }
+    function stat(value, label) {
+        return '<div class="hosp-stat"><strong>' + esc(value) + '</strong><span>' + esc(label) + '</span></div>';
+    }
+    function hero(eyebrow, title, lead, stats, cta) {
+        return '<header class="hosp-hero"><div class="hosp-hero-text">' +
+            '<p class="hosp-eyebrow">' + esc(greeting()) + ' · ' + esc(eyebrow) + '</p>' +
+            '<h1>' + esc(title) + '</h1><p class="hosp-lead">' + esc(lead) + '</p>' +
+            (cta || '') + '</div>' +
+            '<div class="hosp-stats">' + stats.join('') + '</div></header>';
+    }
+
     // ------------------------------------------------------------------ home
     function home() {
         if (!need()) return;
@@ -98,12 +116,14 @@
                     '<span class="small muted">' + money(q.price, q.currency) + ' · ' + esc(q.area_label) + ' · ' + when(q.local_deadline) +
                     ' · ' + esc(q.pending_quotes) + ' pending quote' + (Number(q.pending_quotes) === 1 ? '' : 's') + '</span></li>';
             }).join('') + '</ul>';
-        app().innerHTML = shell(
-            '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>Your requests</h1>' +
-            '<p class="muted">Ask for the help you need. The exact address is shared only with the provider you choose, after you both confirm.</p></div>' +
-            '<div><a class="btn btn-primary btn-sm" href="#/services/new">New request</a></div></div>' +
-            list +
-            '<h2 class="h4">Visits</h2>' + visitList(appointments)
+        var pending = requests.reduce(function(sum, q) { return sum + Number(q.pending_quotes || 0); }, 0);
+        app().innerHTML = shell('<div class="hosp-page">' +
+            hero('Hospitality services', 'Get help for your guests, quickly',
+                'Describe what is needed and the price you will pay. Nearby providers send quotes, and the address opens only after you both confirm.',
+                [stat(requests.length, 'open requests'), stat(pending, 'quotes to review'), stat(appointments.length, 'visits')],
+                '<a class="hosp-cta" href="#/services/new">Start a new request</a>') +
+            '<div class="hosp-section"><h2 class="h4">Your requests</h2>' + list + '</div>' +
+            '<div class="hosp-section"><h2 class="h4">Visits</h2>' + visitList(appointments) + '</div></div>'
         );
     }
 
@@ -123,12 +143,13 @@
                     return '<li class="card-row"><a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
                         '<span class="small muted">' + money(q.price, q.currency) + ' · ' + esc(q.area_label) + ' · ' + when(q.local_deadline) + mine + '</span></li>';
                 }).join('') + '</ul>');
-        app().innerHTML = shell(
-            '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>Open requests</h1>' +
-            '<p class="muted">Read the area for each request and quote if you can reach. The exact address opens only after both sides confirm.</p>' +
-            profileNote + '</div></div>' +
-            list +
-            '<h2 class="h4">Visits</h2>' + visitList(appointments)
+        app().innerHTML = shell('<div class="hosp-page">' +
+            hero('Hospitality services', 'Work close to home',
+                'Read the area for each request and quote if you can reach it. The exact address opens only after both sides confirm.',
+                [stat(requests.length, 'open requests nearby'), stat(appointments.length, 'your visits')], '') +
+            '<div class="hosp-section">' + profileNote + '</div>' +
+            '<div class="hosp-section"><h2 class="h4">Open requests</h2>' + list + '</div>' +
+            '<div class="hosp-section"><h2 class="h4">Visits</h2>' + visitList(appointments) + '</div></div>'
         );
     }
 

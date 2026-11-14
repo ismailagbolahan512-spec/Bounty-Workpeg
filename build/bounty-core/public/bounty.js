@@ -2847,43 +2847,74 @@
         removeHomeThemePicker();
         header.hidden = false;
 
+        // Navigation lives in one sidebar, opened from the Menu button. Hospitality comes first,
+        // then the marketplace, then everything else grouped by purpose.
         var authed = isAuthenticated();
-        var links = authed ?
-            headerLink('bounties', 'Marketplace') + headerLink('dashboard', 'Dashboard') + headerLink('how-it-works', 'How it works') + headerLink('protection', 'Trust & safety') +
-            (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('invitations', 'Invitations') + headerLink('work', 'My work') : '') +
-            (getRole() === 'business' ? headerLink('talent', 'Talent pool') + headerLink('connections/workpeg', 'Workpeg') : '') :
-            headerLink('bounties', 'Marketplace') + headerLink('how-it-works', 'How it works');
+        var role = authed ? getRole() : '';
+        var groups = [];
+        groups.push(['Services', [headerLink('services', 'Hospitality')]]);
+        groups.push(['Work', authed ?
+            [headerLink('bounties', 'Marketplace'), headerLink('dashboard', 'Dashboard')]
+                .concat(role === 'worker' ? [headerLink('recommended', 'For you'), headerLink('invitations', 'Invitations'), headerLink('work', 'My work')] : []) :
+            [headerLink('bounties', 'Marketplace')]]);
+        if (authed && role === 'business') {
+            groups.push(['People and connections', [headerLink('talent', 'Talent pool'), headerLink('connections/workpeg', 'Workpeg')]]);
+        }
+        groups.push(['Help', [headerLink('how-it-works', 'How it works'), headerLink('protection', 'Trust & safety')]]);
+        var sideLinks = groups.map(function(g) {
+            return '<div class="side-group"><p class="side-label">' + g[0] + '</p>' + g[1].join('') + '</div>';
+        }).join('');
+        var accountLinks = authed ?
+            '<div class="side-group"><p class="side-label">Account</p><a href="#/profile">Profile</a><button type="button" id="mobile-logout">Log out</button></div>' :
+            '<div class="side-group"><p class="side-label">Account</p><a href="#/auth/login">Log in</a><a href="#/auth/signup">Create account</a></div>';
+
         var authActions = authed ?
             '<div class="header-user">' + bellHTML() +
             '<a class="user-name" href="#/profile">' + escapeHTML((state.user.name || 'Member').split(' ')[0]) + '</a>' +
             '<button class="btn btn-sm btn-quiet" id="logout-btn" type="button" title="Log out" aria-label="Log out">' + icon('logout', 16) + '</button></div>' :
             '<a class="btn btn-sm btn-quiet desktop-auth" href="#/auth/login">Log in</a><a class="btn btn-primary btn-sm desktop-auth" href="#/auth/signup">Get started</a>';
-        var mobileLinks = authed ?
-            links + '<a href="#/profile">Profile</a><button type="button" id="mobile-logout">Log out</button>' :
-            '<a href="#/auth/login">Log in</a><a href="#/auth/signup">Create account</a>';
 
         header.className = 'site-header';
         header.innerHTML =
             '<div class="header-inner">' +
+            '<button class="menu-button" id="menu-btn" type="button" aria-expanded="' + state.mobileMenu + '" aria-controls="side-menu">' +
+            icon(state.mobileMenu ? 'close' : 'menu', 18) + '<span>Menu</span></button>' +
             '<a class="brand" href="#/" aria-label="Bounty home"><span class="brand-mark">B</span><span class="brand-word">Bounty</span></a>' +
-            '<nav class="nav-links" aria-label="Main navigation">' + links + '</nav>' +
             '<span class="header-spacer"></span>' +
             '<div class="header-tail">' +
             themePickerHTML() +
             authActions +
-            '<button class="icon-button mobile-menu" id="mobile-menu-btn" type="button" aria-expanded="' + state.mobileMenu + '" aria-controls="mobile-nav" aria-label="Toggle navigation">' + icon(state.mobileMenu ? 'close' : 'menu', 20) + '</button>' +
             '</div>' +
-            '</div>' +
-            '<nav id="mobile-nav" class="mobile-nav ' + (state.mobileMenu ? 'open' : '') + '" aria-label="Mobile navigation">' + mobileLinks + '</nav>';
+            '</div>';
+
+        // The sidebar sits outside the header: the header's backdrop blur would otherwise
+        // trap a fixed element inside the bar.
+        var sideRoot = document.getElementById('side-root');
+        if (!sideRoot) {
+            sideRoot = document.createElement('div');
+            sideRoot.id = 'side-root';
+            document.body.appendChild(sideRoot);
+        }
+        sideRoot.innerHTML =
+            '<div class="side-scrim' + (state.mobileMenu ? ' open' : '') + '" id="side-scrim" aria-hidden="true"></div>' +
+            '<nav id="side-menu" class="side-menu' + (state.mobileMenu ? ' open' : '') + '" aria-label="Main navigation">' +
+            '<div class="side-head"><span class="brand-word">Menu</span>' +
+            '<button class="icon-button" id="side-close" type="button" aria-label="Close menu">' + icon('close', 18) + '</button></div>' +
+            sideLinks + accountLinks +
+            '</nav>';
 
         bindThemePicker(header);
         on($('#bell-btn', header), 'click', function() { go('notifications'); });
-        on($('#mobile-menu-btn', header), 'click', function() {
+        on($('#menu-btn', header), 'click', function() {
             state.mobileMenu = !state.mobileMenu;
+            state.themeMenu = false;
             renderHeader();
+            if (state.mobileMenu) { var first = $('#side-menu a', sideRoot); if (first) first.focus(); }
         });
+        on($('#side-close', sideRoot), 'click', function() { state.mobileMenu = false; renderHeader(); $('#menu-btn', header).focus(); });
+        on($('#side-scrim', sideRoot), 'click', function() { state.mobileMenu = false; renderHeader(); });
         on($('#logout-btn', header), 'click', logout);
-        on($('#mobile-logout', header), 'click', logout);
+        on($('#mobile-logout', sideRoot), 'click', logout);
     }
 
     function bindThemePicker(root) {
@@ -3560,6 +3591,20 @@
             if (state.themeMenu && !(event.target.closest && event.target.closest('.theme-menu-wrap'))) {
                 state.themeMenu = false;
                 renderHeader();
+            }
+            // Choosing a page closes the sidebar, so the page is what the person sees next.
+            if (state.mobileMenu && event.target.closest && event.target.closest('#side-menu a')) {
+                state.mobileMenu = false;
+                renderHeader();
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && state.mobileMenu) {
+                state.mobileMenu = false;
+                renderHeader();
+                var btn = document.getElementById('menu-btn');
+                if (btn) btn.focus();
             }
         });
 
