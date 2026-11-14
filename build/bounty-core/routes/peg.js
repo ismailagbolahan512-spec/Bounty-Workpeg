@@ -7,11 +7,13 @@
 //   GET  /api/peg/business/requests/:id   one request with its quotes and visit (services:read)
 //   GET  /api/peg/business/appointments   the business's live visits (services:read)
 //   POST /api/peg/confirmations           ask the user to approve a sensitive action
+//   POST /api/peg/bounties                post a bounty, once the owner has approved these exact details (bounties:publish)
 
 const express = require('express');
 const { pool } = require('../db');
 const { authenticateIntegration, requireScope, httpError } = require('../middleware/auth');
-const { logAudit } = require('../services/protection');
+const { logAudit, assertActiveAccount, requireAgreement } = require('../services/protection');
+const pegBounties = require('../services/peg-bounties');
 const tokens = require('../services/integration-tokens');
 const hs = require('../services/hospitality');
 const { flags } = require('../services/schema-flags');
@@ -203,6 +205,38 @@ router.post('/confirmations', async(req, res, next) => {
             id: conf.id, action: conf.action, expires_at: conf.expires_at, status: 'awaiting_user_approval',
         });
     } catch (err) { next(err); }
+});
+
+// Posts a bounty for the business. The owner must first approve the exact details through
+// POST /confirmations (action bounties:publish). The approval is used once, in the same
+// transaction as the insert, so a failed post leaves nothing behind and the approval is not spent.
+router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    const client = await pool.connect();
+    try {
+        const body = req.body || {};
+        await assertActiveAccount(req.user.id);
+        await requireAgreement(pool.query.bind(pool), req.user.id, 'creator_protection_business');
+        if (typeof body.confirmation_id !== 'string' || body.confirmation_id === '') {
+            throw httpError(400, 'Ask for approval first, then send its confirmation_id with the same details');
+        }
+        const fields = pegBounties.validatePegBounty(body.payload);
+        await client.query('BEGIN');
+        const used = await tokens.consumeConfirmation(client, {
+            confirmationId: body.confirmation_id, tokenId: req.integration.tokenId, action: 'bounties:publish', payload: body.payload,
+        });
+        if (!used) {
+            throw httpError(403, 'This approval is missing, already used, expired, or does not match these details');
+        }
+        const row = await pegBounties.insertPegBounty(client, req.user.id, fields, false);
+        await logAudit(client.query.bind(client), req.user.id, 'bounty.created_from_workpeg', 'bounty', row.id, { title: row.title });
+        await client.query('COMMIT');
+        res.status(201).json(row);
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        next(err);
+    } finally {
+        client.release();
+    }
 });
 
 module.exports = router;
