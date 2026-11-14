@@ -111,7 +111,7 @@
 
     function businessHome(requests, appointments) {
         var list = requests.length === 0
-            ? '<div class="empty-state"><h3>No requests yet</h3><p>Describe what is wrong, what is needed and a price. Providers in your region will send quotes.</p></div>'
+            ? '<div class="empty-state"><h3>No requests yet</h3><p>Describe what is wrong, what is needed and a price. The first provider nearby to take a request is booked.</p></div>'
             : '<ul class="list-plain">' + requests.map(function(q) {
                 return '<li class="card-row">' + (q.urgent ? '<span class="badge badge-signal">Guest waiting</span> ' : '') +
                     '<a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
@@ -121,7 +121,7 @@
         var pending = requests.reduce(function(sum, q) { return sum + Number(q.pending_quotes || 0); }, 0);
         app().innerHTML = shell('<div class="hosp-page">' +
             hero('Hospitality services', 'Get help for your guests, quickly',
-                'Describe what is needed and the price you will pay. Nearby providers send quotes, and the address opens only after you both confirm.',
+                'Describe what is needed and the price you will pay. The first nearby provider to take it is booked, and the address opens only after you both confirm.',
                 [stat(requests.length, 'open requests'), stat(pending, 'quotes to review'), stat(appointments.length, 'visits')],
                 '<a class="hosp-cta" href="#/services/new">Start a new request</a>') +
             '<div class="hosp-section"><h2 class="h4">Your requests</h2>' + list + '</div>' +
@@ -148,7 +148,7 @@
                 }).join('') + '</ul>');
         app().innerHTML = shell('<div class="hosp-page">' +
             hero('Hospitality services', 'Work close to home',
-                'Read the area for each request and quote if you can reach it. The exact address opens only after both sides confirm.',
+                'Read the area for each request and take it if you can reach it. The first provider to take a request gets it.',
                 [stat(requests.length, 'open requests nearby'), stat(appointments.length, 'your visits')], '') +
             '<div class="hosp-section">' + profileNote + '</div>' +
             '<div class="hosp-section"><h2 class="h4">Open requests</h2>' + list + '</div>' +
@@ -350,7 +350,7 @@
             (q.services && q.services.length ? '<p><strong>Services:</strong> ' + q.services.map(esc).join(', ') + '</p>' : '') +
             placeBlock + notesBlock + '</div>';
 
-        body += owner ? quotesBlock(q, quotes) : providerBlock(q, quotes);
+        body += owner ? '' : providerBlock(q, quotes);
         body += '<div id="visit-slot"></div><div id="appt-slot"></div>';
         app().innerHTML = shell(header + body);
 
@@ -499,15 +499,16 @@
         var quoted = q.my_quote_status;
         var open = q.status === 'open' && !q.appointment;
         if (quoted) {
-            return '<div class="detail-section"><h2>Your quote</h2><p>Status: ' + esc(quoted) + '.</p></div>';
+            return '<div class="detail-section"><h2>Your request</h2><p>Status: ' + esc(quoted) + '.</p></div>';
         }
-        if (!open) return '<div class="detail-section"><p class="small muted">This request is no longer taking quotes.</p></div>';
-        return '<div class="detail-section"><h2>Send a quote</h2>' +
-            '<form id="quote-form" class="form-card form">' +
-            '<div class="field"><label for="quote-amount">Your price (' + esc(q.currency) + ')</label><input id="quote-amount" type="number" min="1" step="0.01" required></div>' +
-            '<div class="field"><label for="quote-note">A short note (optional)</label><textarea id="quote-note" rows="2" maxlength="1000"></textarea></div>' +
-            '<p class="form-error" id="quote-error" hidden></p>' +
-            '<div class="form-actions"><button class="btn btn-primary btn-sm" id="quote-submit" type="submit">Send quote</button></div></form></div>';
+        if (!open) return '<div class="detail-section"><p class="small muted">This request has already been taken.</p></div>';
+        return '<div class="detail-section"><h2>Take this request</h2>' +
+            '<p class="small muted">First come, first served. Propose a visit time inside your available hours, and the business confirms it.</p>' +
+            '<form id="take-form" class="form-card form">' +
+            '<div class="field"><label for="take-starts">Visit starts (local time)</label><input id="take-starts" type="datetime-local" required></div>' +
+            '<div class="field"><label for="take-ends">Visit ends (local time)</label><input id="take-ends" type="datetime-local" required></div>' +
+            '<p class="form-error" id="take-error" hidden></p>' +
+            '<div class="form-actions"><button class="btn btn-primary btn-sm" id="take-submit" type="submit">Take this request</button></div></form></div>';
     }
 
     function bindQuoteForms(q) {
@@ -531,23 +532,23 @@
                     .catch(function(error2) { btn.disabled = false; setError(error, error2, 'Could not accept this quote.'); });
             });
         });
-        var quoteForm = document.getElementById('quote-form');
-        if (quoteForm) {
-            quoteForm.addEventListener('submit', function(e) {
+        var takeForm = document.getElementById('take-form');
+        if (takeForm) {
+            takeForm.addEventListener('submit', function(e) {
                 e.preventDefault();
-                var error = document.getElementById('quote-error');
+                var error = document.getElementById('take-error');
                 error.hidden = true;
-                var button = document.getElementById('quote-submit');
+                var button = document.getElementById('take-submit');
                 button.disabled = true;
-                K().api('/api/services/requests/' + encodeURIComponent(q.id) + '/quotes', { method: 'POST', body: {
-                    amount: document.getElementById('quote-amount').value,
-                    note: document.getElementById('quote-note').value
+                K().api('/api/services/requests/' + encodeURIComponent(q.id) + '/take', { method: 'POST', body: {
+                    starts_local: document.getElementById('take-starts').value,
+                    ends_local: document.getElementById('take-ends').value
                 } }).then(function() {
-                    K().toast('Quote sent', 'success');
+                    K().toast('Request taken. The business confirms the visit time next.', 'success');
                     detail(q.id);
                 }).catch(function(error2) {
                     button.disabled = false;
-                    setError(document.getElementById('quote-error'), error2, 'Could not send your quote.');
+                    setError(error, error2, 'Could not take this request.');
                 });
             });
         }
