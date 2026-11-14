@@ -45,7 +45,7 @@
 .discover-strip:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .discover-photo {
   position: relative; display: block; width: 112px; height: 84px; border-radius: 8px; overflow: hidden;
-  background: linear-gradient(135deg, var(--ink-elevated), var(--ink-sunk));
+  background: var(--ink-elevated);
 }
 .discover-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .discover-body { display: grid; gap: 4px; min-width: 0; }

@@ -591,7 +591,8 @@ input[type="radio"]:focus-visible { outline: none; box-shadow: var(--shadow-focu
 }
 
 /* Hero orb — simplify, no pulsing gradient on top of everything */
-.orb { background: radial-gradient(circle, var(--signal-soft), transparent 70%) !important; }
+/* Ink & Signal: no glows or gradients. */
+.orb { background: none !important; }
 
 /* Legacy gradient pills & bars that paint a gradient */
 .hero-proof, .live-pill, .hero-actions a.btn-primary {
