@@ -710,7 +710,11 @@
                 '<div class="field"><span class="field-label">Kinds of work you do</span>' + categoryCheckboxes([]) + '</div>' +
                 '<div class="field"><label for="profile-skills">What you are good at (optional)</label><input id="profile-skills" maxlength="300" placeholder="e.g. HTML, copywriting, video editing"></div>' : '') +
             '<button class="btn btn-primary" id="profile-save" type="submit">Save profile ' + icon('arrow', 16) + '</button></form></div>' +
-            (worker ? '<div class="form-layout" id="portfolio-card"></div><div class="form-layout" data-availability-slot></div>' : '') + '</div></section>';
+            (worker ? '<div class="form-layout" id="portfolio-card"></div><div class="form-layout" data-availability-slot></div>' : '') +
+            (business ? '<div class="form-layout"><section class="form-card form" aria-labelledby="workpeg-settings-title"><h2 id="workpeg-settings-title" class="h4">Workpeg</h2>' +
+              '<p class="muted">Connect Bounty to Workpeg, approve what it may do, and revoke access at any time. Only business accounts can connect.</p>' +
+              '<div><a class="btn btn-sm btn-primary" href="#/connections/workpeg">Open Workpeg settings</a></div></section></div>' : '') +
+            '</div></section>';
 
         api('/api/profile/me')
             .then(function(me) {
@@ -971,7 +975,7 @@
 
     function friendlyApiError(error, fallback) {
         if (error instanceof TypeError && /fetch/i.test(error.message)) {
-            return 'Could not reach the Bounty backend. Make sure the server is running and this page is opened from http://localhost:3000.';
+            return 'Could not reach the Bounty server. Check your connection and try again. If the site has been idle, the server can take a minute to start.';
         }
         return (error && error.message) || fallback;
     }
@@ -2858,7 +2862,7 @@
                 .concat(role === 'worker' ? [headerLink('recommended', 'For you'), headerLink('invitations', 'Invitations'), headerLink('work', 'My work')] : []) :
             [headerLink('bounties', 'Marketplace')]]);
         if (authed && role === 'business') {
-            groups.push(['People and connections', [headerLink('talent', 'Talent pool'), headerLink('connections/workpeg', 'Workpeg')]]);
+            groups.push(['People', [headerLink('talent', 'Talent pool')]]);
         }
         groups.push(['Help', [headerLink('how-it-works', 'How it works'), headerLink('protection', 'Trust & safety')]]);
         var sideLinks = groups.map(function(g) {

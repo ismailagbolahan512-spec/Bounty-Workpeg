@@ -209,3 +209,8 @@
     text-decoration: underline;
     text-underline-offset: 4px
 }
+
+.notice.success {
+    border-color: var(--success-border, #9bd1ae);
+    background: var(--success-bg, #e8f6ee)
+}

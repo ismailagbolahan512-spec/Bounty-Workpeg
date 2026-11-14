@@ -402,15 +402,52 @@
         return '<span aria-label="' + v + ' out of 5">' + '★'.repeat(v) + '☆'.repeat(5 - v) + '</span>';
     }
 
+    // Payment is paid directly between the two sides. Bounty holds no money and does not release any.
+    // Each side marks its own step; the visit counts as paid once both have.
+    function paymentHTML(a, owner) {
+        var p = a.payment || {};
+        if (p.confirmed) {
+            return '<div class="detail-section"><h2>Payment</h2><p class="notice success">Payment confirmed by both sides.</p></div>';
+        }
+        var mine = owner ? p.business_paid : p.provider_received;
+        var theirs = owner ? p.provider_received : p.business_paid;
+        var label = owner ? 'I have made the payment' : 'I have received the payment';
+        var action = mine
+            ? '<p class="small"><strong>You have marked this.</strong> Waiting for the other side to confirm.</p>'
+            : '<button class="btn btn-primary btn-sm" id="pay-mark" type="button">' + esc(label) + '</button>';
+        var other = theirs ? 'The other side has marked their step.' : 'The other side has not marked their step yet.';
+        return '<div class="detail-section"><h2>Payment</h2>' +
+            '<p class="small muted">Pay each other directly. Bounty does not hold or move the money. Mark each step here so both sides have a shared record.</p>' +
+            '<p class="small">' + other + '</p>' + action +
+            '<p class="form-error" id="pay-error" hidden></p></div>';
+    }
+
+    function bindPayment(q, owner) {
+        var btn = document.getElementById('pay-mark');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            K().api('/api/services/appointments/' + encodeURIComponent(q.appointment.id) + '/payment', { method: 'POST' }).then(function() {
+                K().toast(owner ? 'Payment marked as made' : 'Payment marked as received', 'success');
+                detail(q.id);
+            }).catch(function(err) {
+                btn.disabled = false;
+                setError(document.getElementById('pay-error'), err, 'Could not record the payment.');
+            });
+        });
+    }
+
     function loadVisit(q) {
         var a = q.appointment;
         var slot = document.getElementById('visit-slot');
         if (!slot || !a || a.status !== 'confirmed') return;
+        var owner = q.viewer_role === 'business';
         Promise.all([K().api('/api/services/appointments/' + encodeURIComponent(a.id) + '/messages'),
             K().api('/api/services/appointments/' + encodeURIComponent(a.id) + '/reviews')]).then(function(res) {
             var codes = (res[0].messages || []).filter(function(m) { return m.kind === 'status'; }).map(function(m) { return m.status_code; });
             var finished = codes.indexOf('finished') !== -1;
-            slot.innerHTML = progressHTML(codes) + reviewHTML(a.id, finished, res[1]);
+            slot.innerHTML = progressHTML(codes) + paymentHTML(a, owner) + reviewHTML(a.id, finished, res[1]);
+            bindPayment(q, owner);
             bindReview(q.id);
         }).catch(function() { /* the rest of the page still works without the progress strip */ });
     }

@@ -202,7 +202,8 @@ async function liveAppointment(bountyId, providerId) {
     const where = providerId ? 'AND a.provider_id = $2' : '';
     const { rows } = await pool.query(
         `SELECT a.id, a.bounty_id, a.provider_id, a.starts_at, a.ends_at, a.status,
-                a.provider_confirmed_at, a.business_confirmed_at, b.business_id, b.title, sl.time_zone
+                a.provider_confirmed_at, a.business_confirmed_at, a.business_paid_at, a.provider_received_at,
+                b.business_id, b.title, sl.time_zone
          FROM appointments a JOIN bounties b ON b.id = a.bounty_id LEFT JOIN service_locations sl ON sl.bounty_id = b.id
          WHERE a.bounty_id = $1 ${where} AND a.status IN ('proposed', 'confirmed')
          ORDER BY a.created_at DESC LIMIT 1`, params
@@ -424,6 +425,7 @@ async function loadAppointment(id) {
     const { rows } = await pool.query(
         `SELECT a.id, a.bounty_id, a.provider_id, a.starts_at, a.ends_at, a.status, a.proposed_by,
                 a.provider_confirmed_at, a.provider_confirmed_by, a.business_confirmed_at, a.business_confirmed_by,
+                a.business_paid_at, a.provider_received_at,
                 b.business_id, b.title, sl.time_zone
          FROM appointments a
          JOIN bounties b ON b.id = a.bounty_id
@@ -440,6 +442,11 @@ function publicAppointment(a) {
         local_ends: a.time_zone ? hs.formatLocal(new Date(a.ends_at), a.time_zone) : null,
         provider_confirmed: a.provider_confirmed_at !== null,
         business_confirmed: a.business_confirmed_at !== null,
+        payment: {
+            business_paid: a.business_paid_at != null,
+            provider_received: a.provider_received_at != null,
+            confirmed: a.business_paid_at != null && a.provider_received_at != null,
+        },
     };
 }
 
@@ -627,6 +634,44 @@ router.post('/appointments/:id/review', async(req, res, next) => {
             if (err.code === '23505') throw httpError(409, 'You have already reviewed this visit');
             throw err;
         }
+    } catch (err) { next(err); }
+});
+
+// POST /api/services/appointments/:id/payment
+// Each side records its own step: the business says it has paid, the provider says it has received the
+// payment. Nothing is held and no money moves through Bounty. The visit counts as paid once both have marked it.
+router.post('/appointments/:id/payment', async(req, res, next) => {
+    try {
+        await assertActiveAccount(req.user.id);
+        const a = await loadAppointment(req.params.id);
+        if (!a) throw httpError(404, 'Appointment not found');
+        const party = hs.partyOf(req.user.id, a, a.business_id);
+        if (!party) throw httpError(403, 'Only the provider and the business can record payment for this visit');
+        if (a.status !== 'confirmed') throw httpError(409, 'Payment is recorded once both sides have confirmed the visit');
+
+        const column = party === 'business' ? 'business_paid_at' : 'provider_received_at';
+        const event = party === 'business' ? 'payment_made_marked' : 'payment_received_marked';
+        const { rows } = await pool.query(
+            `UPDATE appointments SET ${column} = COALESCE(${column}, NOW()), updated_at = NOW()
+             WHERE id = $1 RETURNING business_paid_at, provider_received_at`, [a.id]
+        );
+        await pool.query(
+            `INSERT INTO appointment_events (appointment_id, actor_id, event) VALUES ($1, $2, $3)`,
+            [a.id, req.user.id, event]
+        );
+        const other = party === 'provider' ? a.business_id : a.provider_id;
+        const who = await nameOf(req.user.id);
+        const text = party === 'business'
+            ? `${who} says the payment for "${a.title}" has been made. Confirm once you have received it.`
+            : `${who} says they have received the payment for "${a.title}".`;
+        await createNotification(other, text, `#/services/appointments/${a.id}`);
+
+        const payment = {
+            business_paid: rows[0].business_paid_at != null,
+            provider_received: rows[0].provider_received_at != null,
+        };
+        payment.confirmed = payment.business_paid && payment.provider_received;
+        res.json({ payment });
     } catch (err) { next(err); }
 });
 

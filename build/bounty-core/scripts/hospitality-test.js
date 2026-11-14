@@ -255,6 +255,23 @@ async function main() {
     const removeWhileConfirmed = await api('DELETE', `/api/services/requests/${requestId}/address`, null, hotel.token);
     check('the address cannot be removed while a visit is confirmed', removeWhileConfirmed.status === 409, removeWhileConfirmed.body);
 
+    // -------------------------------------------------------------- payment made (no escrow)
+    const paidOutsider = await api('POST', `/api/services/appointments/${appointmentId}/payment`, null, second.token);
+    check('a stranger cannot record payment on the visit', paidOutsider.status === 403, paidOutsider.body);
+
+    const paidByHotel = await api('POST', `/api/services/appointments/${appointmentId}/payment`, null, hotel.token);
+    check('the business marks the payment as made', paidByHotel.status === 200 && paidByHotel.body.payment.business_paid === true, paidByHotel.body);
+    check('one side alone does not confirm payment', paidByHotel.body.payment.confirmed === false, paidByHotel.body);
+
+    const paidAgain = await api('POST', `/api/services/appointments/${appointmentId}/payment`, null, hotel.token);
+    check('marking payment twice changes nothing', paidAgain.status === 200 && paidAgain.body.payment.business_paid === true, paidAgain.body);
+
+    const receivedByProvider = await api('POST', `/api/services/appointments/${appointmentId}/payment`, null, near.token);
+    check('the provider confirms receipt, and the visit is paid by both', receivedByProvider.status === 200 && receivedByProvider.body.payment.confirmed === true, receivedByProvider.body);
+
+    const paidView = await api('GET', `/api/services/requests/${requestId}`, null, hotel.token);
+    check('the request shows payment confirmed by both', paidView.body.request.appointment && paidView.body.request.appointment.payment.confirmed === true, paidView.body);
+
     // -------------------------------------------------------------- reviews
     const reviewEarly = await api('POST', `/api/services/appointments/${appointmentId}/review`, { rating: 5 }, hotel.token);
     check('a visit cannot be reviewed before the provider marks it finished', reviewEarly.status === 409, reviewEarly.body);

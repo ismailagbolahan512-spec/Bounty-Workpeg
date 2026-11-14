@@ -27,6 +27,9 @@ class PostBountyPage(App):
     working = State(False)
     cursor = State("")            # the newest update already shown, as an ISO time in UTC
     nda = State(False)            # the business agreed to the NDA for this draft
+    nda_version = State("")       # the NDA version the server gave, sent back with the agreement
+    nda_intro = State("")
+    nda_clauses = State([])       # the NDA terms, exactly as Bounty holds them
 
     async def on_mount(self):
         store.page_title = "Ask Bounty"
@@ -75,6 +78,7 @@ class PostBountyPage(App):
             d = res.get("draft", {})
             self.draft = d
             self.nda = False
+            await self.load_nda()
             self.reward = str(d.get("suggested_reward", {}).get("amount", ""))
             source = "Bounty's AI" if res.get("source") == "ai" else "Bounty's built-in rules (AI is not connected on the server)"
             self.say("bounty", f"Drafted with {source}: \"{d.get('title', '')}\". Check the reward below. Then answer the NDA question.")
@@ -99,7 +103,19 @@ class PostBountyPage(App):
             "requirements": requirements,
             "currency": "NGN",
             "nda_agreed": self.nda,
+            "nda_version": self.nda_version,
         }
+
+    async def load_nda(self):
+        # The terms come from Bounty, so the chat shows exactly what the task will carry.
+        try:
+            n = await http.get(f"{API}/nda", auth=self.token)
+            self.nda_version = n.get("version", "")
+            self.nda_intro = n.get("intro", "")
+            self.nda_clauses = n.get("clauses", [])
+        except Exception:
+            self.nda_version = ""
+            self.nda_clauses = []
 
     def agree_nda(self):
         self.nda = True
@@ -206,13 +222,20 @@ class PostBountyPage(App):
     def nda_block(self):
         if self.nda:
             return Tag("NDA agreed", tone="success", dot=True)
+        elif self.nda_version == "":
+            return Text("The NDA could not be loaded from Bounty. Try the draft again before posting.", tone="danger")
         else:
             return Container(
                 Column(
                     Text("Do you agree to the NDA?", weight="semibold"),
-                    Text("The worker keeps this task's details and any business information they see confidential. They may not share them outside this task.", variant="muted"),
+                    Text(self.nda_intro, variant="muted"),
+                    Container(
+                        Column(*[Text(c, variant="muted") for c in self.nda_clauses], gap=8),
+                        variant="card", padding=16,
+                    ),
+                    Text(f"Terms version {self.nda_version}", variant="caption"),
                     Button("I agree to the NDA", variant="outline-gray", on_click=self.agree_nda),
-                    gap=8,
+                    gap=12,
                 ),
                 variant="card", padding=16,
             )

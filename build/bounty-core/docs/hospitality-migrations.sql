@@ -242,3 +242,14 @@ CREATE TABLE IF NOT EXISTS service_reviews (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (appointment_id, reviewer_id)
 );
+
+-- 037-payment-made
+-- Hospitality is paid directly between the two sides. Nothing is held in escrow and no money moves
+-- through Bounty. Each side records that payment was made or received; the visit is paid once both have.
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS business_paid_at TIMESTAMPTZ;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS provider_received_at TIMESTAMPTZ;
+ALTER TABLE appointment_events DROP CONSTRAINT IF EXISTS appointment_events_event_check;
+ALTER TABLE appointment_events ADD CONSTRAINT appointment_events_event_check CHECK (event IN (
+  'proposed', 'confirmed_by_provider', 'confirmed_by_business',
+  'cancelled', 'superseded', 'address_disclosed',
+  'payment_made_marked', 'payment_received_marked'));

@@ -59,7 +59,8 @@ function validatePegBounty(input) {
 }
 
 // Inserts an open bounty for the business, inside the caller's transaction (client).
-async function insertPegBounty(client, businessId, f, confidential = false) {
+// ndaText is the agreed NDA terms, stored on the task so each worker accepts them before starting.
+async function insertPegBounty(client, businessId, f, confidential = false, ndaText = null) {
     const execution = resolveExecution({});
     const { rows } = await client.query(
         `INSERT INTO bounties
@@ -72,7 +73,7 @@ async function insertPegBounty(client, businessId, f, confidential = false) {
          RETURNING id, title, reward_amount, currency, deadline, status`,
         [businessId, f.title, f.description, f.category, f.difficulty, f.reward_amount, f.deadline, f.submission_type,
             f.requirements, execution.execution_mode, execution.industry, execution.job_type, execution.max_workers,
-            execution.winner_limit, execution.independent_target, execution.requires_authorization, execution.nda_text,
+            execution.winner_limit, execution.independent_target, execution.requires_authorization, ndaText || execution.nda_text,
             execution.authorization_statement, execution.rules_of_engagement, execution.permitted_targets,
             execution.prohibited_activities, confidential, f.currency]
     );
