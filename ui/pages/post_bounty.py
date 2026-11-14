@@ -34,7 +34,8 @@ class PostBountyPage(App):
     deadline = State("")          # deadline from the draft, editable
     posted = State([])            # tasks already posted from this business (mock)
     live_tasks = State([])        # live: this business's tasks on Bounty, with progress
-    pending = State("")           # the question the peg is waiting on: "", "reward", "deadline" or "confirm"
+    pending = State("")           # the question the peg is waiting on: "", "reward", "deadline", "workers" or "confirm"
+    workers = State("")           # how many workers may take the task, 1 to 50 (blank means 3)
     working = State(False)
     ready = State(False)          # ready to take a request
     cursor = State(0)             # mock: how many update rows are already in the chat
@@ -193,7 +194,8 @@ class PostBountyPage(App):
         self.draft = d
         self.deadline = ""
         self.reward = ""
-        self.say("bounty", "Got it: \"" + d["title"] + "\". I need two details before I post it.")
+        self.workers = ""
+        self.say("bounty", "Got it: \"" + d["title"] + "\". I need a few details before I post it.")
         self.ask_next()
 
     def ask_next(self):
@@ -203,10 +205,14 @@ class PostBountyPage(App):
         elif self.deadline.strip() == "":
             self.pending = "deadline"
             self.say("bounty", "What is the deadline? Give the date as 2026-11-20.")
+        elif self.workers.strip() == "":
+            self.pending = "workers"
+            self.say("bounty", "How many workers may take it, from 1 to 50? Say 3 for the usual.")
         else:
             self.pending = "confirm"
             self.say("bounty", "Ready to post: \"" + self.draft.get("title", "") + "\", reward " + self.reward.strip() +
-                     " naira, deadline " + self.deadline.strip() + ". Reply yes to post it, or cancel to stop.")
+                     " naira, deadline " + self.deadline.strip() + ", " + self.workers.strip() +
+                     " workers. Reply yes to post it, or cancel to stop.")
 
     def valid_date(self, day):
         return len(day) == 10 and day[4:5] == "-" and day[7:8] == "-" and all(c in DIGITS or c == "-" for c in day)
@@ -216,6 +222,7 @@ class PostBountyPage(App):
         self.draft = {}
         self.reward = ""
         self.deadline = ""
+        self.workers = ""
         self.say("bounty", "Cancelled. Tell me about a new task when you are ready.")
 
     async def answer(self, text):
@@ -235,6 +242,16 @@ class PostBountyPage(App):
                 self.say("bounty", "Give the date as 2026-11-20, or say cancel.")
                 return
             self.deadline = text.strip()
+            self.ask_next()
+        elif self.pending == "workers":
+            figure = text.strip()
+            if figure == "":
+                self.workers = "3"
+            elif not all(c in DIGITS for c in figure) or int(figure) < 1 or int(figure) > 50:
+                self.say("bounty", "Give a whole number from 1 to 50, or 3 for the usual.")
+                return
+            else:
+                self.workers = figure
             self.ask_next()
         elif self.pending == "confirm":
             if low in ["yes", "y", "post", "post it"]:
@@ -264,6 +281,9 @@ class PostBountyPage(App):
         if len(day) != 10 or day[4:5] != "-" or day[7:8] != "-":
             self.say("bounty", "In live mode the deadline is a date, for example 2026-11-20.")
             return
+        count = 3
+        if self.workers.strip() != "":
+            count = int(self.workers.strip())
         self.working = True
         try:
             await http.post(API + "/bounties", {
@@ -275,6 +295,7 @@ class PostBountyPage(App):
                     "reward_amount": reward,
                     "deadline": day + LIVE_TIME,
                     "submission_type": "text",
+                    "max_workers": count,
                 },
             }, auth=self.token)
             self.posted = self.posted + [{"data": {"title": self.draft.get("title", ""), "status": "open"}}]
