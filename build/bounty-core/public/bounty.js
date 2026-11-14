@@ -468,56 +468,103 @@
             .catch(function() {});
     }
 
+    // Two-step drawer: step 1 picks work categories, step 2 reviews them and saves skills.
+    // Skipping (or the close button) still marks onboarding done, so it never returns unasked.
     function showOnboarding(me) {
-        if (document.getElementById('onboarding-modal')) return;
-        var box = document.createElement('div');
-        box.id = 'onboarding-modal';
-        box.setAttribute('role', 'dialog');
-        box.setAttribute('aria-modal', 'true');
-        box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:100;padding:16px';
-        box.innerHTML = '<div class="form-card form ux-modal-card">' +
-            '<h2 class="ux-mt0">What kind of work do you do?</h2>' +
-            '<p class="small muted">This helps businesses find you. You can skip this and change it later on your profile.</p>' +
-            '<div class="field"><span class="field-label">Pick any that apply</span>' + categoryCheckboxes(me.categories || []) + '</div>' +
-            '<div class="field"><label for="ob-skills">What are you good at? (optional)</label>' +
-            '<input id="ob-skills" maxlength="300" placeholder="e.g. HTML, copywriting, video editing" value="' + escapeHTML(me.skills || '') + '"></div>' +
-            '<div class="ux-actions-end">' +
-            '<button class="btn" type="button" id="ob-skip">Skip for now</button>' +
-            '<button class="btn btn-primary" type="button" id="ob-save">Save</button></div></div>';
-        document.body.appendChild(box);
+        if (document.getElementById('onboarding-drawer')) return;
+        var back = document.createElement('div');
+        back.id = 'onboarding-backdrop';
+        back.className = 'drawer-backdrop';
+        var drawer = document.createElement('aside');
+        drawer.id = 'onboarding-drawer';
+        drawer.className = 'drawer';
+        drawer.setAttribute('role', 'dialog');
+        drawer.setAttribute('aria-modal', 'true');
+        drawer.setAttribute('aria-labelledby', 'ob-title');
+        document.body.appendChild(back);
+        document.body.appendChild(drawer);
+        document.body.style.overflow = 'hidden';
 
-        function close() {
-            if (box.parentNode) box.parentNode.removeChild(box);
+        var step = 1;
+        var chosen = (me.categories || []).slice();
+        var skills = me.skills || '';
+
+        function finish(saveAnswers) {
+            if (back.parentNode) back.parentNode.removeChild(back);
+            if (drawer.parentNode) drawer.parentNode.removeChild(drawer);
+            document.body.style.overflow = '';
             // The availability question follows the profile questions.
             if (window.BountyFeatures && window.BountyFeatures.afterSignIn) window.BountyFeatures.afterSignIn(state.profile || me);
+            return saveAnswers;
         }
 
-        on($('#ob-skip', box), 'click', function() {
-            api('/api/profile/me', { method: 'PATCH', body: { onboarding_done: true } }).catch(function() {});
-            close();
-        });
+        function captureStep() {
+            if (step === 1) chosen = checkedCategories(drawer);
+            var field = $('#ob-skills', drawer);
+            if (field) skills = field.value.trim();
+        }
 
-        on($('#ob-save', box), 'click', function() {
-            var saveButton = $('#ob-save', box);
-            saveButton.disabled = true;
-            api('/api/profile/me', {
-                    method: 'PATCH',
-                    body: {
-                        categories: checkedCategories(box),
-                        skills: $('#ob-skills', box).value.trim(),
-                        onboarding_done: true
-                    }
-                })
-                .then(function(saved) {
-                    state.profile = saved;
-                    close();
-                    toast('Thanks. Your profile is updated.', 'success');
-                })
-                .catch(function(error) {
-                    saveButton.disabled = false;
-                    toast(friendlyApiError(error, 'Could not save your answers.'), 'error');
-                });
-        });
+        function paint() {
+            var title = step === 1 ? 'What kind of work do you do?' : 'Check and finish';
+            var body;
+            if (step === 1) {
+                body = '<p class="small muted">This helps businesses find you. You can change it later on your profile.</p>' +
+                    '<div class="field"><span class="field-label">Pick any that apply</span>' + categoryCheckboxes(chosen) + '</div>';
+            } else {
+                var names = chosen.length
+                    ? chosen.map(categoryLabel).join(', ')
+                    : 'None yet. You can add them later.';
+                body = '<p class="small muted">Saving marks setup complete. Nothing is shared beyond your profile.</p>' +
+                    '<dl class="detail-def"><div class="detail-def-row"><dt>Work categories</dt><dd>' + escapeHTML(names) + '</dd></div></dl>' +
+                    '<div class="field"><label for="ob-skills">What are you good at? (optional)</label>' +
+                    '<input id="ob-skills" maxlength="300" placeholder="e.g. HTML, copywriting, video editing" value="' + escapeHTML(skills) + '"></div>';
+            }
+            var foot = step === 1
+                ? '<button class="btn" type="button" id="ob-skip">Skip for now</button><button class="btn btn-primary" type="button" id="ob-next">Next</button>'
+                : '<button class="btn" type="button" id="ob-back">Back</button><button class="btn btn-primary" type="button" id="ob-save">Save and finish</button>';
+            drawer.innerHTML =
+                '<div class="drawer-head"><div>' +
+                  '<p class="eyebrow" style="margin-bottom:4px"><span class="eyebrow-dot"></span> Set up your profile · step ' + step + ' of 2</p>' +
+                  '<h2 id="ob-title">' + escapeHTML(title) + '</h2></div>' +
+                  '<button class="icon-button" id="ob-close" type="button" aria-label="Skip setup">' + icon('close', 18) + '</button></div>' +
+                '<div class="drawer-body stack-md">' + body + '</div>' +
+                '<div class="drawer-foot">' + foot + '</div>';
+            wire();
+            var first = drawer.querySelector('input, button.btn-primary');
+            if (first) first.focus();
+        }
+
+        function skipSetup() {
+            api('/api/profile/me', { method: 'PATCH', body: { onboarding_done: true } }).catch(function() {});
+            finish(false);
+        }
+
+        function wire() {
+            on($('#ob-close', drawer), 'click', skipSetup);
+            on($('#ob-skip', drawer), 'click', skipSetup);
+            on($('#ob-next', drawer), 'click', function() { captureStep(); step = 2; paint(); });
+            on($('#ob-back', drawer), 'click', function() { captureStep(); step = 1; paint(); });
+            on($('#ob-save', drawer), 'click', function() {
+                captureStep();
+                var saveButton = $('#ob-save', drawer);
+                saveButton.disabled = true;
+                api('/api/profile/me', {
+                        method: 'PATCH',
+                        body: { categories: chosen, skills: skills, onboarding_done: true }
+                    })
+                    .then(function(saved) {
+                        state.profile = saved;
+                        finish(true);
+                        toast('Thanks. Your profile is updated.', 'success');
+                    })
+                    .catch(function(error) {
+                        saveButton.disabled = false;
+                        toast(friendlyApiError(error, 'Could not save your answers.'), 'error');
+                    });
+            });
+        }
+
+        paint();
     }
 
     function addMineToggle() {
@@ -1180,16 +1227,17 @@
         wrap.style.marginTop = '12px';
         wrap.innerHTML = '<button class="btn btn-block" id="close-bounty-btn" type="button">Close bounty</button>';
         sidebar.appendChild(wrap);
-        on($('#close-bounty-btn'), 'click', function() {
-            if (!window.confirm('Close this bounty? It will be hidden from the marketplace.')) return;
-            api('/api/bounties/' + encodeURIComponent(bounty.id) + '/close', { method: 'PATCH' })
-                .then(function() {
-                    toast('Bounty closed.', 'success');
-                    bountyDetailPage(bounty.id);
-                })
-                .catch(function(error) {
-                    toast(friendlyApiError(error, 'Could not close this bounty.'), 'error');
-                });
+        on($('#close-bounty-btn'), 'click', function(event) {
+            inlineConfirm(event.currentTarget, 'Close this bounty? It will be hidden from the marketplace.', 'Close bounty', function() {
+                api('/api/bounties/' + encodeURIComponent(bounty.id) + '/close', { method: 'PATCH' })
+                    .then(function() {
+                        toast('Bounty closed.', 'success');
+                        bountyDetailPage(bounty.id);
+                    })
+                    .catch(function(error) {
+                        toast(friendlyApiError(error, 'Could not close this bounty.'), 'error');
+                    });
+            });
         });
     }
 
@@ -1493,7 +1541,7 @@
             '<div class="review-body"><div class="review-head"><h3>' + escapeHTML(s.title || 'Untitled submission') + '</h3>' +
             '<span class="status-pill ' + statusClass(status) + '">' + escapeHTML(statusLabel(status)) + '</span></div>' +
             '<div class="review-compare">' + asked + submitted + '</div>' +
-            (pending ? '<div class="revise-box" data-revise-box hidden><label class="small" for="revise-' + id + '">What should change?</label><textarea id="revise-' + id + '" rows="3" maxlength="1000" placeholder="Explain what needs to change"></textarea><div class="field"><label class="small" for="revise-deadline-' + id + '">Proposed new deadline (optional)</label><input id="revise-deadline-' + id + '" data-revise-deadline type="datetime-local"><span class="field-hint">The task deadline changes only if the worker accepts.</span></div><div><button class="btn btn-sm btn-primary" type="button" data-revise-send="' + id + '">Send back for changes</button></div></div>' : '') +
+            (pending ? '<div class="revise-box" data-revise-box hidden><label class="small" for="revise-' + id + '">What should change?</label><textarea id="revise-' + id + '" rows="3" maxlength="1000" placeholder="Explain what needs to change"></textarea><div class="field"><label class="small" for="revise-deadline-' + id + '">Proposed new deadline (optional)</label><input id="revise-deadline-' + id + '" data-revise-deadline type="datetime-local"><span class="field-hint">The task deadline changes only if the worker accepts.</span></div><div><button class="btn btn-sm" type="button" data-revise-send="' + id + '">Send back for changes</button></div></div>' : '') +
             (open ? '<div class="reject-box" data-reject-box hidden><label class="small" for="reject-reason-' + id + '">Reason for rejection (the worker sees this)</label><textarea id="reject-reason-' + id + '" data-reject-reason rows="3" maxlength="500" placeholder="Say what was missing or wrong, so the worker knows what to change"></textarea><span class="field-hint">10–500 characters. A rejection needs a reason.</span><div><button class="btn btn-sm btn-primary" type="button" data-reject-send="' + id + '">Send rejection</button></div></div>' : '') +
             '</div><div class="dashboard-item-actions">' +
             '<button class="btn btn-sm" type="button" data-checks="' + id + '">Run checks</button>' +
@@ -1884,7 +1932,9 @@
                 wireSubmissionTools(list, bounty);
                 $$('[data-approve]', list).forEach(function(btn) {
                     btn.addEventListener('click', function() {
-                        approveSubmission(bounty, btn.getAttribute('data-approve'), btn);
+                        inlineConfirm(btn, 'Approve this submission? This marks the bounty as completed.', 'Approve', function() {
+                            approveSubmission(bounty, btn.getAttribute('data-approve'), btn);
+                        });
                     });
                 });
                 $$('[data-reject]', list).forEach(function(btn) {
@@ -1898,7 +1948,9 @@
                         var card = btn.closest('[data-submission]');
                         var reason = String(card.querySelector('[data-reject-reason]').value || '').trim();
                         if (reason.length < 10) return toast('Give the worker a reason (at least 10 characters).', 'error');
-                        rejectSubmission(bounty, btn.getAttribute('data-reject-send'), btn, reason);
+                        inlineConfirm(btn, 'Reject this submission? The worker will see your reason and will not be able to resubmit to this bounty.', 'Reject', function() {
+                            rejectSubmission(bounty, btn.getAttribute('data-reject-send'), btn, reason);
+                        });
                     });
                 });
             })
@@ -1908,8 +1960,23 @@
             });
     }
 
+    // Inline confirmation inside the submission card: the decision is explicit, and nothing blocks the page.
+    function inlineConfirm(button, message, label, onYes) {
+        var card = button.closest('[data-submission]') || button.parentNode;
+        var old = card.querySelector('[data-inline-confirm]');
+        if (old) old.parentNode.removeChild(old);
+        var box = document.createElement('div');
+        box.className = 'notice warning inline-confirm';
+        box.setAttribute('data-inline-confirm', '');
+        box.setAttribute('role', 'alert');
+        box.innerHTML = '<p style="margin:0 0 10px">' + escapeHTML(message) + '</p><div class="row-sm"><button class="btn btn-sm btn-primary" type="button" data-yes>' + escapeHTML(label) + '</button><button class="btn btn-sm" type="button" data-no>Cancel</button></div>';
+        card.appendChild(box);
+        box.querySelector('[data-no]').addEventListener('click', function() { box.parentNode.removeChild(box); button.focus(); });
+        box.querySelector('[data-yes]').addEventListener('click', function() { box.parentNode.removeChild(box); onYes(); });
+        box.querySelector('[data-yes]').focus();
+    }
+
     function approveSubmission(bounty, submissionId, button) {
-        if (!window.confirm('Approve this submission? This marks the bounty as completed.')) return;
         button.disabled = true;
         button.innerHTML = '<span class="spinner"></span> Approving…';
 
@@ -1926,7 +1993,6 @@
     }
 
     function rejectSubmission(bounty, submissionId, button, reason) {
-        if (!window.confirm('Reject this submission? The worker will see your reason and will not be able to resubmit to this bounty.')) return;
         button.disabled = true;
 
         api('/api/submissions/' + encodeURIComponent(submissionId) + '/reject', { method: 'POST', body: { reason: reason } })
@@ -2392,7 +2458,7 @@
                 var deadlineValue = deadlineInput ? deadlineInput.value : '';
                 if (notes.length < 5) return toast('Explain what needs to change (at least 5 characters).', 'error');
                 if (deadlineValue && new Date(deadlineValue).getTime() <= Date.now()) return toast('The proposed deadline must be in the future.', 'error');
-                if (!window.confirm('Send this submission back to the worker for changes?')) return;
+                inlineConfirm(btn, 'Send this back to the worker for changes?', 'Send back', function() {
                 btn.disabled = true;
                 var body = { notes: notes };
                 if (deadlineValue) body.proposed_deadline = new Date(deadlineValue).toISOString();
@@ -2405,6 +2471,7 @@
                         toast(friendlyApiError(error, 'Could not send this back.'), 'error');
                         btn.disabled = false;
                     });
+                });
             });
         });
     }
@@ -2767,7 +2834,7 @@
         var authed = isAuthenticated();
         var links = authed ?
             headerLink('bounties', 'Marketplace') + headerLink('dashboard', 'Dashboard') + headerLink('how-it-works', 'How it works') + headerLink('protection', 'Trust & safety') +
-            (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('invitations', 'Invitations') : '') +
+            (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('invitations', 'Invitations') + headerLink('work', 'My work') : '') +
             (getRole() === 'business' ? headerLink('talent', 'Talent pool') : '') :
             headerLink('bounties', 'Marketplace') + headerLink('how-it-works', 'How it works');
         var authActions = authed ?

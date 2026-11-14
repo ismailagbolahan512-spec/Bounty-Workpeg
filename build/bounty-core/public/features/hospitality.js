@@ -538,35 +538,53 @@
     // ------------------------------------------------------------------ after sign-in prompts
     // Asked once per sign-in until answered: a business names its industry, a worker says what
     // kind of work they take, where they cover, and when they are free. Both can be left for later.
+    // Setup questions open as a side drawer, not a centred dialog: the person can read the page
+    // behind it, and "Later" or Escape always closes it without saving.
     function promptBox(id, title, intro, inner, onSave) {
         if (document.getElementById(id)) return;
-        var box = document.createElement('div');
+        var back = document.createElement("div");
+        back.className = "drawer-backdrop";
+        back.id = id + "-backdrop";
+        var box = document.createElement("aside");
         box.id = id;
-        box.setAttribute('role', 'dialog');
-        box.setAttribute('aria-modal', 'true');
-        box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:100;padding:16px';
-        box.innerHTML = '<div class="form-card form ux-modal-card"><h2 class="ux-mt0">' + esc(title) + '</h2>' +
-            '<p class="small muted">' + esc(intro) + '</p>' + inner +
-            '<p class="form-error" data-prompt-error hidden></p>' +
-            '<div class="ux-actions-end"><button class="btn" type="button" data-later>Later</button>' +
-            '<button class="btn btn-primary" type="button" data-save>Save</button></div></div>';
+        box.className = "drawer";
+        box.setAttribute("role", "dialog");
+        box.setAttribute("aria-modal", "true");
+        box.setAttribute("aria-labelledby", id + "-title");
+        box.innerHTML = "<div class=\"drawer-head\"><div><p class=\"eyebrow\" style=\"margin-bottom:4px\"><span class=\"eyebrow-dot\"></span> Set up your profile</p>" +
+            "<h2 id=\"" + id + "-title\">" + esc(title) + "</h2></div>" +
+            "<button class=\"icon-button\" type=\"button\" data-later aria-label=\"Close\">&times;</button></div>" +
+            "<div class=\"drawer-body stack-md\"><p class=\"small muted\">" + esc(intro) + "</p>" + inner +
+            "<p class=\"form-error\" data-prompt-error hidden></p></div>" +
+            "<div class=\"drawer-foot\"><button class=\"btn\" type=\"button\" data-later>Later</button>" +
+            "<button class=\"btn btn-primary\" type=\"button\" data-save>Save</button></div>";
+        document.body.appendChild(back);
         document.body.appendChild(box);
-        function close() { if (box.parentNode) box.parentNode.removeChild(box); }
-        box.querySelector('[data-later]').addEventListener('click', close);
-        box.querySelector('[data-save]').addEventListener('click', function() {
-            var button = box.querySelector('[data-save]');
-            var error = box.querySelector('[data-prompt-error]');
+        document.body.style.overflow = "hidden";
+        function onKey(e) { if (e.key === "Escape") close(); }
+        function close() {
+            if (box.parentNode) box.parentNode.removeChild(box);
+            if (back.parentNode) back.parentNode.removeChild(back);
+            document.body.style.overflow = "";
+            document.removeEventListener("keydown", onKey);
+        }
+        document.addEventListener("keydown", onKey);
+        box.querySelectorAll("[data-later]").forEach(function(btn) { btn.addEventListener("click", close); });
+        back.addEventListener("click", close);
+        box.querySelector("[data-save]").addEventListener("click", function() {
+            var button = box.querySelector("[data-save]");
+            var error = box.querySelector("[data-prompt-error]");
             error.hidden = true;
             var problem = onSave(box);
             if (problem) { error.textContent = problem; error.hidden = false; return; }
             button.disabled = true;
             var body = box.__body;
-            K().api('/api/profile/me', { method: 'PATCH', body: body }).then(function() {
-                K().toast('Saved', 'success');
+            K().api("/api/profile/me", { method: "PATCH", body: body }).then(function() {
+                K().toast("Saved", "success");
                 close();
             }).catch(function(e) {
                 button.disabled = false;
-                error.textContent = K().friendlyApiError(e, 'Could not save.');
+                error.textContent = K().friendlyApiError(e, "Could not save.");
                 error.hidden = false;
             });
         });
