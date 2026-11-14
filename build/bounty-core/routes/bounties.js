@@ -246,7 +246,9 @@ router.get('/', optionalAuth, async(req, res, next) => {
          b.created_at,
          u.id AS business_id,
          u.name AS business_name,
-         (SELECT COUNT(*) FROM submissions s WHERE s.bounty_id = b.id)::int AS submissions_count
+         (SELECT COUNT(*) FROM submissions s WHERE s.bounty_id = b.id)::int AS submissions_count,
+         b.max_workers,
+         (SELECT COUNT(*) FROM bounty_participants p WHERE p.bounty_id = b.id AND p.status IN ('active', 'assigned'))::int AS participants_count
        FROM bounties b
        JOIN users u ON u.id = b.business_id
        ${whereClause}
@@ -416,6 +418,8 @@ router.get('/:id', optionalAuth, async(req, res, next) => {
                 name: b.winner_name,
             } : null,
             submissions_count: b.submissions_count,
+            max_workers: b.max_workers,
+            participants_count: b.participants_count,
             confidential: b.confidential,
         };
         // Confidential tasks: material is shown only to the owner, admins, and workers with

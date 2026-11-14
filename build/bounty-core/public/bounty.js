@@ -316,9 +316,10 @@
     }
 
     function workerSlotsText(b) {
-        var taken = Number(b.submissions_count || 0);
-        if (taken >= 3) return 'All 3 worker slots taken';
-        return taken + ' of 3 workers';
+        var taken = Number(b.participants_count || 0);
+        var max = Number(b.max_workers || 3);
+        if (taken >= max) return 'All ' + max + ' worker slots taken';
+        return taken + ' of ' + max + ' workers';
     }
 
     function safeLink(value) {
