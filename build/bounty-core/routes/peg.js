@@ -6,6 +6,7 @@
 //   GET  /api/peg/business/requests       a business's own hospitality requests (services:read)
 //   GET  /api/peg/business/requests/:id   one request with its quotes and visit (services:read)
 //   GET  /api/peg/business/appointments   the business's live visits (services:read)
+//   GET  /api/peg/business/bounties       the business's standard tasks with progress (bounties:publish)
 //   POST /api/peg/confirmations           ask the user to approve a sensitive action
 //   POST /api/peg/bounties                post a bounty, once the owner has approved these exact details (bounties:publish)
 //   POST /api/peg/ai/bounty-draft         AI draft from a prompt; saves nothing (bounties:publish)
@@ -221,6 +222,24 @@ router.get('/notifications', requireScope('bounties:publish'), businessOnly, asy
              WHERE user_id = $1 AND created_at > $2
              ORDER BY created_at ASC LIMIT 50`,
             [req.user.id, since]
+        );
+        res.json(rows);
+    } catch (err) { next(err); }
+});
+
+// The business's own standard tasks, with their progress, for the Workpeg status list (bounties:publish).
+// Hospitality requests are not listed here; they have their own screens.
+router.get('/business/bounties', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT b.id, b.title, b.status, b.max_workers,
+                    (SELECT COUNT(*) FROM bounty_participants p WHERE p.bounty_id = b.id AND p.status IN ('active', 'assigned'))::int AS taken,
+                    (SELECT COUNT(*) FROM submissions s WHERE s.bounty_id = b.id)::int AS submitted,
+                    (SELECT COUNT(*) FROM submissions s WHERE s.bounty_id = b.id AND s.status = 'approved')::int AS approved
+             FROM bounties b
+             WHERE b.business_id = $1 AND b.category <> 'hospitality'
+             ORDER BY b.created_at DESC LIMIT 20`,
+            [req.user.id]
         );
         res.json(rows);
     } catch (err) { next(err); }

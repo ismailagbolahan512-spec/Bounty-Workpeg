@@ -32,7 +32,8 @@ class PostBountyPage(App):
     draft = State({})             # the current draft: title, description, deadline, missing
     reward = State("")            # reward in naira, typed by you
     deadline = State("")          # deadline from the draft, editable
-    posted = State([])            # tasks already posted from this business
+    posted = State([])            # tasks already posted from this business (mock)
+    live_tasks = State([])        # live: this business's tasks on Bounty, with progress
     working = State(False)
     ready = State(False)          # ready to take a request
     cursor = State(0)             # mock: how many update rows are already in the chat
@@ -132,6 +133,10 @@ class PostBountyPage(App):
                 self.say("bounty", "Update: " + r.get("message", ""))
             if len(rows) > 0:
                 self.since = rows[len(rows) - 1]["created_at"]
+        except Exception:
+            pass
+        try:
+            self.live_tasks = await http.get(API + "/business/bounties", auth=self.token)
         except Exception:
             pass
 
@@ -332,7 +337,29 @@ class PostBountyPage(App):
                 variant="card", padding=16,
             )
 
+    def live_row(self, t):
+        return Column(
+            Row(Text(t["title"], weight="semibold"), Spacer(), Tag(t["status"], tone="neutral"),
+                gap=8, align="center"),
+            Text(f"{t['taken']} of {t['max_workers']} workers taken · {t['submitted']} submitted · {t['approved']} approved", variant="muted"),
+            gap=4,
+        )
+
+    def live_list(self):
+        if len(self.live_tasks) == 0:
+            return Column()
+        return Container(
+            Column(
+                Text("Your tasks", variant="heading"),
+                *[self.live_row(t) for t in self.live_tasks],
+                gap=12,
+            ),
+            variant="card", padding=16,
+        )
+
     def posted_list(self):
+        if self.live:
+            return self.live_list()
         if len(self.posted) == 0:
             return Column()
         else:
