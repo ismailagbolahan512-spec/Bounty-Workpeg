@@ -209,25 +209,41 @@ router.post('/confirmations', async(req, res, next) => {
     } catch (err) { next(err); }
 });
 
-// Posts a bounty for the business. The owner must first approve the exact details through
-// POST /confirmations (action bounties:publish). The approval is used once, in the same
-// transaction as the insert, so a failed post leaves nothing behind and the approval is not spent.
+// Limits for posting from Workpeg chat without a separate approval on Bounty. The chat post is
+// the owner's approval, so these caps keep one connection token from posting much at once.
+const PEG_DAILY_LIMIT = 5;
+const PEG_REWARD_CAP = 100000;
+
+// Posts a bounty for the business, from the Workpeg chat. Two ways in:
+//   - { payload }: the chat post. Allowed within PEG_DAILY_LIMIT and PEG_REWARD_CAP; the post is the approval.
+//   - { confirmation_id, payload }: the older path, where the owner approved this exact payload on Bounty.
+// Either way the insert and the audit entry happen in one transaction.
 router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
     const client = await pool.connect();
     try {
         const body = req.body || {};
         await assertActiveAccount(req.user.id);
         await requireAgreement(pool.query.bind(pool), req.user.id, 'creator_protection_business');
-        if (typeof body.confirmation_id !== 'string' || body.confirmation_id === '') {
-            throw httpError(400, 'Ask for approval first, then send its confirmation_id with the same details');
-        }
         const fields = pegBounties.validatePegBounty(body.payload);
         await client.query('BEGIN');
-        const used = await tokens.consumeConfirmation(client, {
-            confirmationId: body.confirmation_id, tokenId: req.integration.tokenId, action: 'bounties:publish', payload: body.payload,
-        });
-        if (!used) {
-            throw httpError(403, 'This approval is missing, already used, expired, or does not match these details');
+        if (typeof body.confirmation_id === 'string' && body.confirmation_id !== '') {
+            const used = await tokens.consumeConfirmation(client, {
+                confirmationId: body.confirmation_id, tokenId: req.integration.tokenId, action: 'bounties:publish', payload: body.payload,
+            });
+            if (!used) {
+                throw httpError(403, 'This approval is missing, already used, expired, or does not match these details');
+            }
+        } else {
+            if (Number(fields.reward_amount) > PEG_REWARD_CAP) {
+                throw httpError(422, 'Posts from Workpeg are limited to a reward of ' + PEG_REWARD_CAP + '. Post larger bounties on Bounty.');
+            }
+            const { rows: recent } = await client.query(
+                "SELECT COUNT(*)::int AS n FROM audit_events WHERE actor_id = $1 AND action = 'bounty.created_from_workpeg' AND created_at > NOW() - INTERVAL '24 hours'",
+                [req.user.id]
+            );
+            if (recent[0].n >= PEG_DAILY_LIMIT) {
+                throw httpError(429, 'You have posted ' + PEG_DAILY_LIMIT + ' bounties from Workpeg today. Try again tomorrow.');
+            }
         }
         const row = await pegBounties.insertPegBounty(client, req.user.id, fields, false);
         await logAudit(client.query.bind(client), req.user.id, 'bounty.created_from_workpeg', 'bounty', row.id, { title: row.title });

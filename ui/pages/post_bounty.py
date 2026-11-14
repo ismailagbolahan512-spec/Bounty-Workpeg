@@ -3,9 +3,9 @@ task, and every step is written into the chat here.
 
 Nothing is posted by the draft. The flow is:
   1. the prompt goes to Bounty's drafter (POST /ai/bounty-draft), which saves nothing;
-  2. the draft appears in the chat, and "Request approval" asks Bounty to approve the exact details;
-  3. the owner approves on Bounty's Connections page;
-  4. "Post" publishes it (POST /bounties), which uses that approval once.
+  2. the draft appears in the chat, where you check it and can change the reward;
+  3. Post sends it (POST /bounties). Pressing Post here is your approval. Bounty limits
+     how many posts a day and how large a reward a post from Workpeg may carry.
 
 The token is the one saved on the Services page (a browser cookie). It needs bounties:publish.
 """
@@ -24,8 +24,6 @@ class PostBountyPage(App):
     messages = State([])          # the chat: {"who": "you" | "bounty", "text": "..."}
     draft = State({})             # the last draft from Bounty, as returned
     reward = State("")            # reward in naira, prefilled from the draft, editable
-    confirmation_id = State("")   # set once Bounty records the approval request
-    sent = State({})              # the exact payload that was sent for approval
     working = State(False)
 
     async def on_mount(self):
@@ -33,14 +31,13 @@ class PostBountyPage(App):
         set_title("Ask Bounty")
         self.token = cookie.get(TOKEN_COOKIE)
         if self.token != "":
-            self.messages = [{"who": "bounty", "text": "Describe the task you need. I will draft it. Nothing is posted until you approve it."}]
+            self.messages = [{"who": "bounty", "text": "Describe the task you need. I will draft it. Check it, then press Post to publish it on Bounty."}]
 
     def set_prompt(self, value):
         self.prompt = value
 
     def set_reward(self, value):
         self.reward = value
-        self.confirmation_id = ""
 
     def say(self, who, text):
         self.messages = self.messages + [{"who": who, "text": text}]
@@ -60,7 +57,6 @@ class PostBountyPage(App):
             d = res.get("draft", {})
             self.draft = d
             self.reward = str(d.get("suggested_reward", {}).get("amount", ""))
-            self.confirmation_id = ""
             source = "Bounty's AI" if res.get("source") == "ai" else "Bounty's built-in rules (AI is not connected on the server)"
             self.say("bounty", f"Drafted with {source}: \"{d.get('title', '')}\". Check the reward below, then request approval.")
             for q in d.get("missing_info", []):
@@ -85,35 +81,22 @@ class PostBountyPage(App):
             "currency": "NGN",
         }
 
-    async def request_approval(self):
+    async def post_bounty(self):
+        # Pressing Post in this chat is the owner's approval. Bounty allows it within a daily
+        # limit and a reward cap, and records every post in its audit log.
         if self.working or self.draft == {}:
             return
         p = self.payload()
         if p["reward_amount"] == "" or p["deadline"] == "":
-            self.say("bounty", "Set a reward, and make sure the draft has a deadline, before requesting approval.")
+            self.say("bounty", "Set a reward, and make sure the draft has a deadline, before posting.")
             return
         self.working = True
         try:
-            res = await http.post(f"{API}/confirmations", {"action": "bounties:publish", "payload": p}, auth=self.token)
-            self.sent = p
-            self.confirmation_id = res.get("id", "")
-            self.say("bounty", "Approval requested. Open Bounty, go to Connections, approve it, then press Post here.")
-        except Exception as e:
-            self.say("bounty", f"Approval was not requested: {e.message}")
-        self.working = False
-
-    async def post_bounty(self):
-        if self.working or self.confirmation_id == "":
-            return
-        self.working = True
-        try:
-            res = await http.post(f"{API}/bounties", {"confirmation_id": self.confirmation_id, "payload": self.sent}, auth=self.token)
-            self.confirmation_id = ""
-            self.sent = {}
+            res = await http.post(f"{API}/bounties", {"payload": p}, auth=self.token)
             self.draft = {}
-            self.say("bounty", f"Posted to Bounty. Task id: {res.get('id', '')}.")
+            self.say("bounty", f"Posted. Your task is live on Bounty (id {res.get('id', '')}).")
         except Exception as e:
-            self.say("bounty", f"Not posted: {e.message}. If the approval was used or expired, request approval again.")
+            self.say("bounty", f"Not posted: {e.message}")
         self.working = False
 
     def build(self):
@@ -194,12 +177,6 @@ class PostBountyPage(App):
 
     def approve_button(self):
         if self.working:
-            return Button("Working...", disabled=True)
-        elif self.confirmation_id == "":
-            return Button("Request approval", variant="outline-gray", on_click=self.request_approval)
+            return Button("Posting...", disabled=True)
         else:
-            return Row(
-                Button("Request approval again", variant="outline-gray", on_click=self.request_approval),
-                Button("Post", on_click=self.post_bounty),
-                gap=8,
-            )
+            return Button("Post to Bounty", on_click=self.post_bounty)
