@@ -34,6 +34,7 @@ class PostBountyPage(App):
     deadline = State("")          # deadline from the draft, editable
     posted = State([])            # tasks already posted from this business (mock)
     live_tasks = State([])        # live: this business's tasks on Bounty, with progress
+    pending = State("")           # the question the peg is waiting on: "", "reward", "deadline" or "confirm"
     working = State(False)
     ready = State(False)          # ready to take a request
     cursor = State(0)             # mock: how many update rows are already in the chat
@@ -45,7 +46,7 @@ class PostBountyPage(App):
         store.page_title = "Ask Bounty"
         set_title("Ask Bounty")
         set_interval(self.check_updates, 30000)
-        self.messages = [{"who": "bounty", "text": "Describe the task you need. I will draft it. Set the reward and the deadline, then press Post."}]
+        self.messages = [{"who": "bounty", "text": "Tell me the task you need. I will ask what I need to know, then post it when you say yes."}]
         await self.setup()
 
     async def setup(self):
@@ -182,20 +183,72 @@ class PostBountyPage(App):
             return
         self.say("you", text)
         self.prompt = ""
+        if self.pending == "":
+            self.start_task(text)
+        else:
+            await self.answer(text)
+
+    def start_task(self, text):
         d = self.make_draft(text)
         self.draft = d
-        self.deadline = d["deadline"]
+        self.deadline = ""
         self.reward = ""
-        self.say("bounty", "Drafted: \"" + d["title"] + "\". Set the reward below, check the deadline, then press Post.")
-        for q in d["missing"]:
-            self.say("bounty", "Missing: " + q)
+        self.say("bounty", "Got it: \"" + d["title"] + "\". I need two details before I post it.")
+        self.ask_next()
+
+    def ask_next(self):
+        if self.reward.strip() == "":
+            self.pending = "reward"
+            self.say("bounty", "What is the reward, in naira? For example 25000.")
+        elif self.deadline.strip() == "":
+            self.pending = "deadline"
+            self.say("bounty", "What is the deadline? Give the date as 2026-11-20.")
+        else:
+            self.pending = "confirm"
+            self.say("bounty", "Ready to post: \"" + self.draft.get("title", "") + "\", reward " + self.reward.strip() +
+                     " naira, deadline " + self.deadline.strip() + ". Reply yes to post it, or cancel to stop.")
+
+    def valid_date(self, day):
+        return len(day) == 10 and day[4:5] == "-" and day[7:8] == "-" and all(c in DIGITS or c == "-" for c in day)
+
+    def cancel(self):
+        self.pending = ""
+        self.draft = {}
+        self.reward = ""
+        self.deadline = ""
+        self.say("bounty", "Cancelled. Tell me about a new task when you are ready.")
+
+    async def answer(self, text):
+        low = text.lower().strip()
+        if low == "cancel" or (self.pending == "confirm" and low in ["no", "n"]):
+            self.cancel()
+            return
+        if self.pending == "reward":
+            figure = "".join([c for c in text if c != ","]).strip()
+            if figure == "" or not all(c in DIGITS for c in figure):
+                self.say("bounty", "The reward must be a whole number of naira, for example 25000.")
+                return
+            self.reward = figure
+            self.ask_next()
+        elif self.pending == "deadline":
+            if not self.valid_date(text.strip()):
+                self.say("bounty", "Give the date as 2026-11-20, or say cancel.")
+                return
+            self.deadline = text.strip()
+            self.ask_next()
+        elif self.pending == "confirm":
+            if low in ["yes", "y", "post", "post it"]:
+                self.pending = ""
+                await self.post_bounty()
+            else:
+                self.say("bounty", "Reply yes to post it, or cancel to stop.")
 
     async def post_bounty(self):
         # Pressing Post in this chat is the owner's approval.
         if self.working or self.draft == {}:
             return
         if self.reward.strip() == "" or self.deadline.strip() == "":
-            self.say("bounty", "Set the reward and the deadline before posting.")
+            self.say("bounty", "I still need the reward and the deadline before I can post.")
             return
         if self.live:
             await self.post_live()
