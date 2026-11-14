@@ -231,12 +231,22 @@ router.get('/requests/:id', async(req, res, next) => {
         }
         if (req.user.role !== 'worker') throw httpError(404, 'Request not found');
 
+        // A provider who took the request (first to click) is assigned through bounty_participants;
+        // a provider with an older quote is still found through quotations.
         const { rows: link } = await pool.query(
             `SELECT q.status AS quote_status, a.id AS appointment_id, a.status AS appointment_status,
                     a.provider_confirmed_at, a.business_confirmed_at
+             FROM bounty_participants bp
+             LEFT JOIN quotations q ON q.bounty_id = bp.bounty_id AND q.provider_id = bp.worker_id
+             LEFT JOIN appointments a ON a.bounty_id = bp.bounty_id AND a.provider_id = bp.worker_id AND a.status IN ('proposed','confirmed')
+             WHERE bp.bounty_id = $1 AND bp.worker_id = $2 AND bp.status = 'assigned'
+             UNION ALL
+             SELECT q.status AS quote_status, a.id AS appointment_id, a.status AS appointment_status,
+                    a.provider_confirmed_at, a.business_confirmed_at
              FROM quotations q
              LEFT JOIN appointments a ON a.bounty_id = q.bounty_id AND a.provider_id = q.provider_id AND a.status IN ('proposed','confirmed')
-             WHERE q.bounty_id = $1 AND q.provider_id = $2 ORDER BY q.created_at DESC LIMIT 1`,
+             WHERE q.bounty_id = $1 AND q.provider_id = $2
+             LIMIT 1`,
             [request.id, req.user.id]
         );
         if (link.length === 0) throw httpError(404, 'Request not found');
