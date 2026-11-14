@@ -365,6 +365,7 @@ class PostBountyPage(App):
                     self.posted_list(),
                     self.demo_button(),
                     gap=16,
+                    scroll="auto",
                 ),
                 max_width=720,
             ),
