@@ -11,7 +11,7 @@ The token is the one saved on the Services page (a browser cookie). It needs bou
 """
 from workpeg.ui import (
     App, State, Padding, Column, Row, Container, ConstrainedBox, Spacer,
-    Text, Button, Link, Input, TextInput, Tag, cookie, dates, http, set_interval, set_title, store,
+    Text, Button, Link, Input, TextInput, cookie, dates, http, set_interval, set_title, store,
 )
 
 API = "https://bounty-workpeg.onrender.com/api/peg"
@@ -26,10 +26,6 @@ class PostBountyPage(App):
     reward = State("")            # reward in naira, prefilled from the draft, editable
     working = State(False)
     cursor = State("")            # the newest update already shown, as an ISO time in UTC
-    nda = State(False)            # the business agreed to the NDA for this draft
-    nda_version = State("")       # the NDA version the server gave, sent back with the agreement
-    nda_intro = State("")
-    nda_clauses = State([])       # the NDA terms, exactly as Bounty holds them
 
     async def on_mount(self):
         store.page_title = "Ask Bounty"
@@ -77,11 +73,9 @@ class PostBountyPage(App):
             res = await http.post(f"{API}/ai/bounty-draft", {"prompt": text}, auth=self.token)
             d = res.get("draft", {})
             self.draft = d
-            self.nda = False
-            await self.load_nda()
             self.reward = str(d.get("suggested_reward", {}).get("amount", ""))
             source = "Bounty's AI" if res.get("source") == "ai" else "Bounty's built-in rules (AI is not connected on the server)"
-            self.say("bounty", f"Drafted with {source}: \"{d.get('title', '')}\". Check the reward below. Then answer the NDA question.")
+            self.say("bounty", f"Drafted with {source}: \"{d.get('title', '')}\". Check the reward below, then press Post to publish it.")
             for q in d.get("missing_info", []):
                 self.say("bounty", f"Missing: {q}")
         except Exception as e:
@@ -102,32 +96,12 @@ class PostBountyPage(App):
             "submission_type": d.get("submission_type", "url"),
             "requirements": requirements,
             "currency": "NGN",
-            "nda_agreed": self.nda,
-            "nda_version": self.nda_version,
         }
-
-    async def load_nda(self):
-        # The terms come from Bounty, so the chat shows exactly what the task will carry.
-        try:
-            n = await http.get(f"{API}/nda", auth=self.token)
-            self.nda_version = n.get("version", "")
-            self.nda_intro = n.get("intro", "")
-            self.nda_clauses = n.get("clauses", [])
-        except Exception:
-            self.nda_version = ""
-            self.nda_clauses = []
-
-    def agree_nda(self):
-        self.nda = True
-        self.say("bounty", "NDA agreed. You can post the task now.")
 
     async def post_bounty(self):
         # Pressing Post in this chat is the owner's approval. Bounty allows it within a daily
         # limit and a reward cap, and records every post in its audit log.
         if self.working or self.draft == {}:
-            return
-        if not self.nda:
-            self.say("bounty", "Agree to the NDA before posting.")
             return
         p = self.payload()
         if p["reward_amount"] == "" or p["deadline"] == "":
@@ -206,7 +180,6 @@ class PostBountyPage(App):
                     Input(TextInput(value=self.reward, on_change=self.set_reward, placeholder="25000"),
                           label="Reward (NGN)"),
                     Text(f"Deadline: {self.draft.get('suggested_deadline', '') or 'not set'}", variant="muted"),
-                    self.nda_block(),
                     Row(Spacer(), self.approve_button()),
                     gap=12,
                 ),
@@ -219,31 +192,8 @@ class PostBountyPage(App):
         else:
             return Button("Send", on_click=self.send_prompt)
 
-    def nda_block(self):
-        if self.nda:
-            return Tag("NDA agreed", tone="success", dot=True)
-        elif self.nda_version == "":
-            return Text("The NDA could not be loaded from Bounty. Try the draft again before posting.", tone="danger")
-        else:
-            return Container(
-                Column(
-                    Text("Do you agree to the NDA?", weight="semibold"),
-                    Text(self.nda_intro, variant="muted"),
-                    Container(
-                        Column(*[Text(c, variant="muted") for c in self.nda_clauses], gap=8),
-                        variant="card", padding=16,
-                    ),
-                    Text(f"Terms version {self.nda_version}", variant="caption"),
-                    Button("I agree to the NDA", variant="outline-gray", on_click=self.agree_nda),
-                    gap=12,
-                ),
-                variant="card", padding=16,
-            )
-
     def approve_button(self):
         if self.working:
             return Button("Posting...", disabled=True)
-        elif not self.nda:
-            return Button("Agree to the NDA first", disabled=True)
         else:
             return Button("Post to Bounty", on_click=self.post_bounty)

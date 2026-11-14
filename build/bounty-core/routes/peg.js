@@ -15,7 +15,6 @@ const { pool } = require('../db');
 const { authenticateIntegration, requireScope, httpError } = require('../middleware/auth');
 const { logAudit, assertActiveAccount, requireAgreement } = require('../services/protection');
 const pegBounties = require('../services/peg-bounties');
-const nda = require('../services/nda');
 const { generateBountyDraft } = require('../services/ai');
 const tokens = require('../services/integration-tokens');
 const hs = require('../services/hospitality');
@@ -227,11 +226,6 @@ router.get('/notifications', requireScope('bounties:publish'), businessOnly, asy
     } catch (err) { next(err); }
 });
 
-// The NDA terms the business agrees to in the chat. The chat shows exactly this text.
-router.get('/nda', requireScope('bounties:publish'), businessOnly, (req, res) => {
-    res.json({ version: nda.NDA_VERSION, intro: nda.NDA_INTRO, clauses: nda.NDA_CLAUSES });
-});
-
 // Limits for posting from Workpeg chat without a separate approval on Bounty. The chat post is
 // the owner's approval, so these caps keep one connection token from posting much at once.
 const PEG_DAILY_LIMIT = 5;
@@ -248,13 +242,6 @@ router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(r
         await assertActiveAccount(req.user.id);
         await requireAgreement(pool.query.bind(pool), req.user.id, 'creator_protection_business');
         const fields = pegBounties.validatePegBounty(body.payload);
-        // The business must agree to the NDA in the Workpeg chat before anything is posted.
-        if (body.payload.nda_agreed !== true) {
-            throw httpError(422, 'Agree to the NDA before this task can be posted');
-        }
-        if (body.payload.nda_version !== nda.NDA_VERSION) {
-            throw httpError(422, 'The NDA has changed. Read the current terms and agree again.');
-        }
         await client.query('BEGIN');
         if (typeof body.confirmation_id === 'string' && body.confirmation_id !== '') {
             const used = await tokens.consumeConfirmation(client, {
@@ -275,9 +262,9 @@ router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(r
                 throw httpError(429, 'You have posted ' + PEG_DAILY_LIMIT + ' bounties from Workpeg today. Try again tomorrow.');
             }
         }
-        const row = await pegBounties.insertPegBounty(client, req.user.id, fields, false, nda.NDA_TEXT);
+        const row = await pegBounties.insertPegBounty(client, req.user.id, fields, false);
         await logAudit(client.query.bind(client), req.user.id, 'bounty.created_from_workpeg', 'bounty', row.id, {
-            title: row.title, nda_agreed: true, nda_version: nda.NDA_VERSION,
+            title: row.title,
         });
         await client.query('COMMIT');
         res.status(201).json(row);

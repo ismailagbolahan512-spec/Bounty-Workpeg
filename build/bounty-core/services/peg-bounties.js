@@ -14,7 +14,6 @@ const CATEGORIES = ['dev', 'design', 'content', 'marketing', 'other'];
 const LIMITS = { TITLE_MIN: 3, TITLE_MAX: 200, DESCRIPTION_MIN: 10, DESCRIPTION_MAX: 5000, REWARD_MIN: 0.01, REWARD_MAX: 1000000 };
 
 const FIELDS = ['title', 'description', 'category', 'difficulty', 'reward_amount', 'deadline', 'submission_type', 'currency', 'requirements'];
-// nda_agreed is checked in routes/peg.js; it is not stored on the bounty.
 
 // Returns a clean copy of the fields, or throws a 400 that names the first problem.
 function validatePegBounty(input) {
@@ -59,8 +58,7 @@ function validatePegBounty(input) {
 }
 
 // Inserts an open bounty for the business, inside the caller's transaction (client).
-// ndaText is the agreed NDA terms, stored on the task so each worker accepts them before starting.
-async function insertPegBounty(client, businessId, f, confidential = false, ndaText = null) {
+async function insertPegBounty(client, businessId, f, confidential = false) {
     const execution = resolveExecution({});
     const { rows } = await client.query(
         `INSERT INTO bounties
@@ -73,7 +71,7 @@ async function insertPegBounty(client, businessId, f, confidential = false, ndaT
          RETURNING id, title, reward_amount, currency, deadline, status`,
         [businessId, f.title, f.description, f.category, f.difficulty, f.reward_amount, f.deadline, f.submission_type,
             f.requirements, execution.execution_mode, execution.industry, execution.job_type, execution.max_workers,
-            execution.winner_limit, execution.independent_target, execution.requires_authorization, ndaText || execution.nda_text,
+            execution.winner_limit, execution.independent_target, execution.requires_authorization, execution.nda_text,
             execution.authorization_statement, execution.rules_of_engagement, execution.permitted_targets,
             execution.prohibited_activities, confidential, f.currency]
     );
