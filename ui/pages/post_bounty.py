@@ -85,6 +85,9 @@ class PostBountyPage(App):
     def set_reward(self, value):
         self.reward = value
 
+    def set_deadline(self, value):
+        self.deadline = value
+
     def say(self, who, text):
         self.messages = self.messages + [{"who": who, "text": text}]
 
@@ -242,7 +245,8 @@ class PostBountyPage(App):
                     Text(self.draft.get("description", ""), variant="muted"),
                     Input(TextInput(value=self.reward, on_change=self.set_reward, placeholder="25000"),
                           label="Reward (NGN)"),
-                    Text("Deadline: " + self.deadline, variant="muted"),
+                    Input(TextInput(value=self.deadline, on_change=self.set_deadline, placeholder="for example Friday"),
+                          label="Deadline"),
                     Row(Spacer(), self.approve_button()),
                     gap=12,
                 ),
