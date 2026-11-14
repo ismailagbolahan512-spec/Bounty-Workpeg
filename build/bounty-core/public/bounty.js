@@ -797,9 +797,9 @@
                     (c.location ? '<p class="small muted ux-mt4">' + escapeHTML(c.location) + '</p>' : '') + '</div></div>' +
                     '<section class="detail-section"><h2>About</h2><div class="detail-description">' + escapeHTML(c.bio || 'This company has not added a description yet.') + '</div></section>' +
                     (site ? '<section class="detail-section"><h2>Website</h2><p><a class="inline-link" href="' + site + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(c.website) + '</a></p></section>' : '') +
-                    '</article><aside class="panel detail-sidebar"><h3>Activity</h3><dl class="definition-list">' +
+                    '</article><div class="panel detail-sidebar"><h2>Activity</h2><dl class="definition-list">' +
                     '<div><dt>Bounties posted</dt><dd>' + escapeHTML(c.bounties_posted) + '</dd></div>' +
-                    '<div><dt>Completed</dt><dd>' + escapeHTML(c.bounties_completed) + '</dd></div></dl></aside></div></div></section>';
+                    '<div><dt>Completed</dt><dd>' + escapeHTML(c.bounties_completed) + '</dd></div></dl></div></div></section>';
             })
             .catch(function(error) {
                 app.innerHTML = '<section class="page"><div class="container"><a class="back-link" href="#/bounties">' + icon('arrowLeft', 16) + ' Back to bounties</a><div class="empty-state"><span class="empty-illustration">' + icon('alert', 28) + '</span><h3>Company not found</h3><p>' + escapeHTML(friendlyApiError(error, 'This company profile could not be loaded.')) + '</p><a class="btn btn-primary" href="#/bounties">Back to marketplace</a></div></div></section>';
@@ -828,7 +828,7 @@
             : 'Log in to pick up where you left off.';
         app.innerHTML =
             '<section class="auth-shell">' +
-              '<aside class="auth-brand-pane">' +
+              '<div class="auth-brand-pane">' +
                 '<div class="auth-brand-content">' +
                   '<a class="auth-brand-mark" href="#/"><span class="brand-mark">B</span><span>Bounty</span></a>' +
                   '<div class="stack-md">' +
@@ -841,7 +841,7 @@
                   '<div class="auth-mark-row"><span class="auth-mark-icon">' + icon('shield', 16) + '</span><div><strong>Reputation from work done.</strong>Approved submissions build a per-industry record you can show.</div></div>' +
                   '<div class="auth-mark-row"><span class="auth-mark-icon">' + icon('globe', 16) + '</span><div><strong>Opportunity without a gate.</strong>Who you know and where you are matter less than what you can do.</div></div>' +
                 '</div>' +
-              '</aside>' +
+              '</div>' +
               '<section class="auth-form-pane"><div class="auth-form-card">' +
                 '<h2>' + (signup ? 'Create your account' : 'Log in') + '</h2>' +
                 '<p class="lead">' + (signup ? 'One minute. No email verification step.' : 'Enter your account details below.') + '</p>' +
@@ -996,7 +996,7 @@
                 '<span class="status-pill status-' + statusClass(status) + '">' + escapeHTML(titleCase(status)) + '</span>' +
                 (b.difficulty ? '<span class="tag">' + escapeHTML(titleCase(b.difficulty)) + '</span>' : '') +
               '</div>' +
-              '<h3 class="bounty-row-title">' + escapeHTML(title) + '</h3>' +
+              '<h2 class="bounty-row-title">' + escapeHTML(title) + '</h2>' +
               '<p class="bounty-row-desc">' + escapeHTML(desc) + '</p>' +
               '<div class="bounty-row-meta">' +
                 '<span>' + icon('clock', 13) + ' ' + escapeHTML(deadlineBit) + '</span>' +
@@ -1066,10 +1066,10 @@
               '</div>' +
               tabsHTML +
               '<div class="marketplace-layout">' +
-                '<aside class="filter-rail">' +
+                '<div class="filter-rail" role="region" aria-label="Filter bounties">' +
                   '<div class="filter-rail-group"><span class="filter-rail-group-label">Category</span>' + categoryItems + '</div>' +
                   '<div class="filter-rail-group"><span class="filter-rail-group-label">Difficulty</span>' + difficultyItems + '</div>' +
-                '</aside>' +
+                '</div>' +
                 '<div>' +
                   '<div class="search-toolbar">' +
                     '<div class="search-wrap">' + icon('search', 17) + '<input id="bounty-search" type="search" placeholder="Search by title or keyword…" value="' + escapeHTML(state.search) + '" aria-label="Search bounties"></div>' +
@@ -2929,7 +2929,7 @@
     function homePage() {
         app.innerHTML =
             '<section class="hero"><div class="container hero-grid"><div class="hero-copy animate-in"><span class="eyebrow"><span class="eyebrow-dot"></span> A wider world of opportunity</span><h1>Your skills deserve a global stage.</h1><p>Bounty connects people with meaningful tasks and rewards. Find work you can prove, build your reputation, and open doors beyond your location.</p><div class="hero-actions"><a class="btn btn-primary" href="#/auth/signup">Get started for free ' + icon('arrow', 17) + '</a><a class="btn" href="#/how-it-works">See how it works</a></div><div class="hero-proof"><span>Built around skills, clear requirements, and real work.</span></div></div>' +
-            '<div class="hero-art animate-in delay-2" aria-label="Illustration of a sample bounty card"><div class="orb"></div><div class="preview-card"><div class="preview-top"><span class="preview-label">Opportunity spotlight</span><span class="live-pill">Demo preview</span></div><span class="category-label"><span class="category-icon">' + icon('code', 16) + '</span> Development</span><h3>Build a landing page</h3><p>Create a clean, responsive experience for a growing business.</p><div class="preview-reward"><div><small>Illustrative reward</small><strong>₦15,000</strong></div><span class="tag">Beginner friendly</span></div><div class="preview-tags"><span class="tag">HTML &amp; CSS</span><span class="tag">Responsive</span><span class="tag">Portfolio</span></div></div><div class="float-note one"><span class="float-icon">' + icon('globe', 18) + '</span><div><strong>Opportunities without borders</strong><small>Skills can travel</small></div></div><div class="float-note two"><span class="float-icon">' + icon('shield', 18) + '</span><div><strong>Clear expectations</strong><small>Know what success means</small></div></div></div></div></section>' +
+            '<div class="hero-art animate-in delay-2" aria-label="Illustration of a sample bounty card"><div class="orb"></div><div class="preview-card"><div class="preview-top"><span class="preview-label">Opportunity spotlight</span><span class="live-pill">Demo preview</span></div><span class="category-label"><span class="category-icon">' + icon('code', 16) + '</span> Development</span><h2>Build a landing page</h2><p>Create a clean, responsive experience for a growing business.</p><div class="preview-reward"><div><small>Illustrative reward</small><strong>₦15,000</strong></div><span class="tag">Beginner friendly</span></div><div class="preview-tags"><span class="tag">HTML &amp; CSS</span><span class="tag">Responsive</span><span class="tag">Portfolio</span></div></div><div class="float-note one"><span class="float-icon">' + icon('globe', 18) + '</span><div><strong>Opportunities without borders</strong><small>Skills can travel</small></div></div><div class="float-note two"><span class="float-icon">' + icon('shield', 18) + '</span><div><strong>Clear expectations</strong><small>Know what success means</small></div></div></div></div></section>' +
             '<div class="logo-strip"><div class="container logo-strip-inner"><p>Opportunities across skill sets</p><span class="category-word">Development</span><span class="category-word">Design</span><span class="category-word">Content</span><span class="category-word">Marketing</span><span class="category-word">And more</span></div></div>' +
             '<section class="section"><div class="container"><div class="section-heading center"><span class="eyebrow">Why Bounty</span><h2>Opportunity should be easier to reach.</h2><p>Good work can come from anywhere. Bounty is designed to make opportunities clearer, more accessible, and easier to act on.</p></div><div class="feature-grid"><article class="feature-card animate-in"><span class="feature-icon">' + icon('globe', 24) + '</span><h3>Wider access</h3><p>Discover task-based opportunities without relying only on personal connections or location.</p></article><article class="feature-card animate-in delay-1"><span class="feature-icon">' + icon('file', 24) + '</span><h3>Clear expectations</h3><p>Every bounty can define its scope, requirements, deadline, and reward before work begins.</p></article><article class="feature-card animate-in delay-2"><span class="feature-icon">' + icon('shield', 24) + '</span><h3>Visible progress</h3><p>Keep submissions and review status organized so workers and businesses can follow the process.</p></article></div></div></section>' +
             '<section class="section-tight"><div class="container split-section"><div><span class="eyebrow">A straightforward process</span><div class="section-heading"><h2>From opportunity to completed work.</h2><p>Bounty is built around a simple workflow that helps both sides understand what happens next.</p></div><ul class="check-list"><li><span class="checkmark">✓</span><span>Businesses describe the task, reward, deadline, and requirements.</span></li><li><span class="checkmark">✓</span><span>Workers find relevant opportunities and submit work.</span></li><li><span class="checkmark">✓</span><span>Businesses review submissions and update the outcome.</span></li></ul><div class="hero-actions"><a class="btn" href="#/how-it-works">Explore the process ' + icon('arrow', 16) + '</a></div></div><div class="split-visual"><h3>How a bounty moves forward</h3><div class="mini-step"><span class="step-number">01</span><div><strong>Publish the task</strong><p>Describe the outcome, requirements, and deadline.</p></div></div><div class="mini-step"><span class="step-number">02</span><div><strong>Submit the work</strong><p>Workers provide a link or submission that matches the task.</p></div></div><div class="mini-step"><span class="step-number">03</span><div><strong>Review the result</strong><p>The business checks the submission and records its decision.</p></div></div><p class="small">Payments in this prototype are simulated; no real funds move.</p></div></div></section>' +

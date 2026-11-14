@@ -25,7 +25,7 @@
     }
 
     function fail(error) {
-        app().innerHTML = '<section class="page"><div class="container"><div class="empty-state"><h3>Unable to load your work</h3><p>' +
+        app().innerHTML = '<section class="page"><div class="container"><div class="empty-state"><h2>Unable to load your work</h2><p>' +
             esc(K().friendlyApiError(error, 'Please try again in a moment.')) +
             '</p><button class="btn" type="button" id="work-retry">Try again</button></div></div></section>';
         document.getElementById('work-retry').addEventListener('click', load);
@@ -71,7 +71,7 @@
         var parts = '<article class="panel stack-sm work-card">' +
             '<div class="row-sm" style="justify-content:space-between;flex-wrap:wrap">' +
               '<div><p class="small muted" style="margin:0">' + esc(s.bounty_title || 'Bounty') + '</p>' +
-              '<h3 style="margin:2px 0 0">' + esc(s.title) + '</h3></div>' + statusPill(s.status) + '</div>' +
+              '<h2 style="margin:2px 0 0">' + esc(s.title) + '</h2></div>' + statusPill(s.status) + '</div>' +
             '<p class="small muted" style="margin:0">Sent ' + esc(K().dateText(s.submitted_at)) + '</p>';
         if (s.status === 'revision_requested') {
             parts += revisionForm(s) + deadlineHTML(s);
@@ -86,7 +86,7 @@
         var t = TABS.filter(function(x) { return x.key === tab; })[0];
         var items = list.filter(function(s) { return t.statuses.indexOf(s.status) !== -1; });
         if (items.length === 0) {
-            return '<div class="empty-state"><h3>' + esc(t.label) + '</h3><p>' + esc(t.empty) + '</p>' +
+            return '<div class="empty-state"><h2>' + esc(t.label) + '</h2><p>' + esc(t.empty) + '</p>' +
                 '<a class="btn btn-primary" href="#/bounties">Browse bounties</a></div>';
         }
         return items.map(cardHTML).join('');
@@ -179,7 +179,7 @@
         render: function() {
             if (!K().isAuthenticated()) { K().go('auth/login'); return; }
             if (K().getRole() !== 'worker') {
-                app().innerHTML = '<section class="page"><div class="container"><div class="empty-state"><h3>Not available for this account</h3><p>My work is for worker accounts.</p></div></div></section>';
+                app().innerHTML = '<section class="page"><div class="container"><div class="empty-state"><h2>Not available for this account</h2><p>My work is for worker accounts.</p></div></div></section>';
                 return;
             }
             load();

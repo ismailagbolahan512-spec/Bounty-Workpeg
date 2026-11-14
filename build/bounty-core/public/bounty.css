@@ -667,7 +667,7 @@ p {
     background: currentColor
 }
 
-.preview-card h3 {
+.preview-card h2 {
     font-size: 1.35rem;
     margin-bottom: 8px
 }
@@ -1838,8 +1838,8 @@ p {
 }
 
 .toast.success {
-    background: var(--good);
-    color: var(--bg)
+    background: var(--success-strong);
+    color: #F8F8F6
 }
 
 .toast.error {
@@ -2746,7 +2746,7 @@ fieldset.field legend { font-weight: 600; margin-bottom: 0.4rem; }
     --surface2: #292F33;
     --surface3: #343B40;
     --text: #F4F1EA;
-    --muted: #89949C;
+    --muted: #A9B2B9;
     --line: #2F363B;
     --accent: #D6A24A;
     --accent2: #E8BD6B;
@@ -2773,13 +2773,13 @@ fieldset.field legend { font-weight: 600; margin-bottom: 0.4rem; }
     --surface2: #EAE5D8;
     --surface3: #DDD6C4;
     --text: #1B1F22;
-    --muted: #5B6670;
+    --muted: #4A5560;
     --line: #DCD5C3;
     --accent: #D6A24A;
     --accent2: #B88632;
     --accentText: #7A5410;
     --onAccent: #1B1F22;
-    --good: #1E7A45;
+    --good: #17663A;
     --goodBg: #DDF3E4;
     --warn: #7A5410;
     --warnBg: #FBEFCF;
