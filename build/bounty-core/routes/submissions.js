@@ -75,12 +75,15 @@ router.post('/', authenticate, requireRole('worker'), async(req, res, next) => {
         // let a submission slip in after completion.
         const { rows } = await client.query(
             `SELECT id, business_id, status, deadline, submission_type,
-                    execution_mode, max_workers, requires_authorization, confidential
+                    execution_mode, max_workers, requires_authorization, confidential, category
              FROM bounties
              WHERE id = $1
              FOR UPDATE`, [bountyId]
         );
         if (rows.length === 0) throw httpError(404, 'Bounty not found');
+        if (rows[0].category === 'hospitality') {
+            throw httpError(409, 'Hospitality visits are not submitted to. Take the request and confirm the visit instead.');
+        }
 
         const bounty = rows[0];
         if (bounty.confidential) {

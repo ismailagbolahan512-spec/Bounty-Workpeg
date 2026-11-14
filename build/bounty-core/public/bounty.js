@@ -1383,6 +1383,8 @@
                             '</dl>' +
                             (business ?
                               '<a class="btn btn-block" href="#/dashboard">Open dashboard</a>' :
+                              bounty.category === 'hospitality' ?
+                              '<a class="btn btn-primary btn-block" href="#/services/' + escapeHTML(bounty.id) + '">Open this visit</a>' :
                               open && !bounty.blocked ?
                               '<button class="btn btn-primary btn-block" id="open-submit-drawer" type="button">Submit to this bounty</button>' +
                               '<p class="small muted" style="text-align:center;margin:0">You can revise your submission after you send it.</p>' :
