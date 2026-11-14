@@ -101,7 +101,7 @@
         app().innerHTML = shell(
             '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>Your requests</h1>' +
             '<p class="muted">Ask for the help you need. The exact address is shared only with the provider you choose, after you both confirm.</p></div>' +
-            '<div><a class="btn btn-primary btn-sm" href="#/services/new">New request</a></div></div>' +
+            '<div class="page-actions"><a class="btn btn-ghost btn-sm" href="#/services/discover">Browse services</a><a class="btn btn-primary btn-sm" href="#/services/new">New request</a></div></div>' +
             list +
             '<h2 class="h4">Visits</h2>' + visitList(appointments)
         );
@@ -141,7 +141,7 @@
         }
         app().innerHTML = loading('Opening the request form…');
         Promise.all([K().api('/api/global/regions'), K().api('/api/services/catalogue'), K().api('/api/profile/me')]).then(function(res) {
-            requestForm(res[0].regions || [], res[1].industries || [], res[2].industry || '');
+            requestForm(res[0].regions || [], res[1].industries || [], K().queryParam('industry') || res[2].industry || '');
         }).catch(function(error) { app().innerHTML = failed(error, 'Could not open the form.'); });
     }
 

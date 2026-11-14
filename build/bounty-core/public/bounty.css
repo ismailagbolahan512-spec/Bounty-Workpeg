@@ -2244,7 +2244,7 @@ p {
 
 :root {
     --radius: 0px;
-    --fontDisplay: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --fontDisplay: 'Inter Tight', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
     --fontBody: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
     --fontMono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
     --ease: cubic-bezier(.2, .7, .1, 1);

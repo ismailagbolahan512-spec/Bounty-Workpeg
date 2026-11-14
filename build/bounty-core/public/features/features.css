@@ -32,3 +32,31 @@
 .form-row { display: flex; align-items: center; gap: 10px; }
 .form-row input { flex: 1; }
 .h4 { font-size: 1.05rem; margin: 24px 0 8px; }
+
+/* Service discovery: photographic index strips (features/discovery.js). */
+.discover-list { display: grid; gap: 12px; margin-top: 24px; }
+.discover-strip {
+  display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 16px;
+  padding: 12px 16px 12px 12px; border: 1px solid var(--line, #e3e6ea); border-radius: 12px;
+  background: var(--ink-surface); color: var(--text-primary); text-decoration: none;
+  transition: border-color var(--dur, 180ms) var(--ease-out, ease-out);
+}
+.discover-strip:hover, .discover-strip:focus-visible { border-color: var(--signal); }
+.discover-strip:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.discover-photo {
+  position: relative; display: block; width: 112px; height: 84px; border-radius: 8px; overflow: hidden;
+  background: var(--ink-elevated);
+}
+.discover-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.discover-body { display: grid; gap: 4px; min-width: 0; }
+.discover-title { font-family: var(--font-display, inherit); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.discover-meta { font-size: 14px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.discover-go { font-size: 14px; font-weight: 500; color: var(--signal); white-space: nowrap; }
+@media (max-width: 560px) {
+  .discover-strip { grid-template-columns: 72px minmax(0, 1fr); }
+  .discover-photo { width: 72px; height: 72px; }
+  .discover-go { grid-column: 2; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) { .discover-strip { transition: none; } }
+
+.page-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
