@@ -1385,7 +1385,7 @@
                               '<a class="btn btn-block" href="#/dashboard">Open dashboard</a>' :
                               bounty.category === 'hospitality' ?
                               '<a class="btn btn-primary btn-block" href="#/services/' + escapeHTML(bounty.id) + '">Open this visit</a>' :
-                              open && !bounty.blocked ?
+                              open && !bounty.blocked && !(bounty.my_participation && bounty.my_participation.status === 'active') ?
                               '<button class="btn btn-primary btn-block" id="open-submit-drawer" type="button">Submit to this bounty</button>' +
                               '<p class="small muted" style="text-align:center;margin:0">You can revise your submission after you send it.</p>' :
                               '<p class="small muted">This bounty is not currently accepting submissions.</p>') +
@@ -1816,7 +1816,7 @@
         var html = '<section class="detail-section" id="participation-section"><h2>Take this task</h2>';
 
         if (me && me.status === 'active' && (!needsNda || me.roe_accepted)) {
-            return html + '<div class="notice">You are working on this task. Submit your work below.</div></section>';
+            return html + '<div class="notice">You are on this task. Use the workspace below to talk to the business.</div></section>';
         }
         if (bounty.execution_mode === 'team' && !(me && me.status === 'assigned')) {
             return html + '<p class="small muted">Team work is assigned by the business. You cannot take it yourself.</p></section>';
