@@ -84,10 +84,7 @@ router.post('/', authenticate, requireRole('worker'), async(req, res, next) => {
 
         const bounty = rows[0];
         if (bounty.confidential) {
-            await requireAgreement(client.query.bind(client), req.user.id, 'task_nda', bountyId);
-            if (!(await canAccessConfidential(client.query.bind(client), req.user.id, bountyId))) {
-                throw httpError(403, 'You need an active place on this confidential task to submit');
-            }
+            throw httpError(403, 'Confidential tasks are not open to workers');
         }
         checkSubmission({ title, description, github_link, notes_to_reviewer }, bounty.submission_type);
 
@@ -113,8 +110,8 @@ router.post('/', authenticate, requireRole('worker'), async(req, res, next) => {
             const names = waiting.rows.map((r) => r.title).join(', ');
             throw httpError(409, `This task waits for other tasks to be completed first: ${names}`);
         }
-        // Who may submit. Team tasks are assigned by the business. Security tasks need the NDA
-        // and rules of engagement accepted first. Everything else takes a slot, up to max_workers.
+        // Who may submit. Team tasks are assigned by the business. Security tasks need the rules
+        // of engagement accepted first. Everything else takes a slot, up to max_workers.
         // The bounty row is locked above, so two concurrent submissions can't take the last slot.
         const found = await client.query(
             `SELECT status, nda_accepted_at, roe_accepted_at
@@ -129,8 +126,8 @@ router.post('/', authenticate, requireRole('worker'), async(req, res, next) => {
         if (bounty.execution_mode === 'team' && !(part && (part.status === 'assigned' || part.status === 'active'))) {
             throw httpError(403, 'Only workers assigned to this task can submit to it');
         }
-        if (bounty.requires_authorization && !(part && part.nda_accepted_at && part.roe_accepted_at)) {
-            throw httpError(403, 'Accept the NDA and the rules of engagement before submitting to this task');
+        if (bounty.requires_authorization && !(part && part.roe_accepted_at)) {
+            throw httpError(403, 'Accept the rules of engagement before submitting to this task');
         }
         if (!part) {
             const taken = await client.query(

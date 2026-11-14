@@ -1583,7 +1583,6 @@
         bounty_cancelled: 'Task cancelled'
     };
     var SECURITY_FIELDS = [
-        ['nda_text', 'Confidentiality agreement (NDA)', 'Workers accept this before they see the rules. Keep it short and plain.'],
         ['authorization_statement', 'Written authorization', 'Who approved this work and exactly what it covers. An NDA is not authorization.'],
         ['rules_of_engagement', 'Rules of engagement', 'How the work may be done, and when a worker must stop and report.'],
         ['permitted_targets', 'Permitted targets', 'The systems or pages in scope, named exactly.'],
@@ -1647,7 +1646,7 @@
             '<p class="small muted">Choose the format that fits the work. We suggest one from the kind of work, and you keep the final choice.</p>' +
             '<div class="form-grid"><div class="field span-2"><label for="bounty-job-type">What kind of work is this?</label>' +
             '<select id="bounty-job-type" name="job_type"><option value="">Not sure yet</option></select>' +
-            '<span class="field-hint">Some kinds of work need a written authorization and an NDA.</span></div></div>' +
+            '<span class="field-hint">Some kinds of work need a written authorization and rules of engagement.</span></div></div>' +
             '<div class="mode-grid" id="mode-grid" role="radiogroup" aria-label="How the task is completed"><div class="loading-line"><span class="spinner"></span> Loading options…</div></div>' +
             '<div id="execution-note" class="notice" hidden></div>' +
             '<div class="form-grid">' +
@@ -1655,9 +1654,9 @@
             '<div class="field" id="winners-field" hidden><label for="bounty-winner-limit">How many winners will you choose?</label><input id="bounty-winner-limit" name="winner_limit" type="number" min="1" max="50" step="1" value="1"></div>' +
             '<div class="field" id="target-field" hidden><label for="bounty-target">How many independent assessments do you need?</label><input id="bounty-target" name="independent_target" type="number" min="2" max="50" step="1" value="3"><span class="field-hint">The task completes when this many are accepted.</span></div>' +
             '</div>' +
-            '<div class="form-grid"><div class="field span-2"><label class="agreement-check"><input id="bounty-confidential" name="confidential" type="checkbox"><span>This task involves confidential business information. Workers must accept a task NDA before they can open its details or submit work.</span></label></div></div>' +
+            '<div class="form-grid"><div class="field span-2"><label class="agreement-check"><input id="bounty-confidential" name="confidential" type="checkbox"><span>This task involves confidential business information. Only you and Bounty admins can see its details, so workers cannot take it.</span></label></div></div>' +
             '<div id="security-fields" class="security-fields" hidden>' +
-            '<div class="notice warning">This work touches systems or sensitive information. Workers must accept your NDA and your rules before they start. An NDA is not authorization, so write the authorization statement as well.</div>' +
+            '<div class="notice warning">This work touches systems or sensitive information. Workers must accept your rules of engagement before they start. Write the authorization statement as well.</div>' +
             SECURITY_FIELDS.map(function(f) {
                 var id = 'bounty-' + f[0].replace(/_/g, '-');
                 return '<div class="field span-2"><label for="' + id + '">' + escapeHTML(f[1]) + '</label>' +
@@ -1823,15 +1822,9 @@
             var label = me && me.status === 'assigned' ? 'Confirm assignment' : 'Take this task';
             return html + '<button class="btn btn-primary" type="button" id="take-task">' + label + '</button></section>';
         }
-        if (!me || !me.nda_accepted) {
-            return html + '<h3 class="small-heading">Step 1: confidentiality agreement</h3>' +
-                '<div class="detail-description small">' + escapeHTML(bounty.nda_text || '') + '</div>' +
-                '<label class="check-line"><input type="checkbox" id="accept-nda"> I accept this confidentiality agreement.</label>' +
-                '<button class="btn btn-primary" type="button" id="take-task" disabled>Accept and take this task</button></section>';
-        }
         var scope = bounty.scope && !bounty.scope.restricted ? scopeFieldsHTML(bounty.scope) :
             '<p class="small muted">The rules are not available to you yet.</p>';
-        return html + '<h3 class="small-heading">Step 2: rules of engagement</h3>' + scope +
+        return html + '<h3 class="small-heading">Rules of engagement</h3>' + scope +
             '<label class="check-line"><input type="checkbox" id="accept-roe"> I have read these rules and will follow them.</label>' +
             '<button class="btn btn-primary" type="button" id="accept-roe-btn" disabled>Accept the rules</button></section>';
     }
@@ -1856,13 +1849,9 @@
             return;
         }
         var take = $('#take-task');
-        var nda = $('#accept-nda');
-        if (take && nda) on(nda, 'change', function() { take.disabled = !nda.checked; });
         if (take) {
             on(take, 'click', function() {
-                var needsNda = Boolean(bounty.requires_authorization);
-                var alreadyNda = Boolean(bounty.my_participation && bounty.my_participation.nda_accepted);
-                sendAccept(bounty.id, needsNda && !alreadyNda ? { nda_accepted: true } : {}, take);
+                sendAccept(bounty.id, {}, take);
             });
         }
         var roe = $('#accept-roe');
@@ -1879,7 +1868,7 @@
         api('/api/bounties/' + encodeURIComponent(bounty.id) + '/participants').then(function(rows) {
             box.innerHTML = rows.length ? '<ul class="criteria-list">' + rows.map(function(p) {
                 var terms = bounty.requires_authorization ?
-                    ' · NDA ' + (p.nda_accepted ? 'accepted' : 'pending') + ', rules ' + (p.roe_accepted ? 'accepted' : 'pending') : '';
+                    ', rules ' + (p.roe_accepted ? 'accepted' : 'pending') : '';
                 return '<li><strong>' + escapeHTML(p.worker_name) + '</strong> · ' + escapeHTML(titleCase(p.status)) + escapeHTML(terms) + '</li>';
             }).join('') + '</ul>' : '<p class="small muted">No workers have taken this task yet.</p>';
         }).catch(function(error) {

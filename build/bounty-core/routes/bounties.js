@@ -364,8 +364,8 @@ router.get('/:id', optionalAuth, async(req, res, next) => {
             );
             participation = p.rows[0] ? participationView(p.rows[0]) : null;
         }
-        // Authorization material is shown to the owner and to workers who accepted the NDA.
-        const canSeeScope = isOwner || Boolean(participation && participation.nda_accepted);
+        // Authorization material is shown to the owner and to workers with a place on the task.
+        const canSeeScope = isOwner || Boolean(participation);
         const scope = b.requires_authorization ? (canSeeScope ? {
             authorization_statement: b.authorization_statement,
             rules_of_engagement: b.rules_of_engagement,
@@ -424,7 +424,7 @@ router.get('/:id', optionalAuth, async(req, res, next) => {
             const allowed = viewerId ? await canAccessConfidential(dbq, viewerId, bountyId) : false;
             if (!allowed) {
                 Object.assign(detail, {
-                    restricted: true, nda_required: true, scope: null,
+                    restricted: true, scope: null,
                     description: null, requirements: null,
                     acceptance_criteria: null, completion_checklist: null,
                 });
@@ -623,7 +623,6 @@ router.post('/:id/accept', authenticate, requireRole('worker'), async(req, res, 
         const bountyId = req.params.id;
         if (!UUID_RE_B.test(bountyId)) throw httpError(400, 'Invalid bounty ID');
         const body = req.body || {};
-        const ndaNow = body.nda_accepted === true;
         const roeNow = body.roe_accepted === true;
 
         await client.query('BEGIN');
@@ -635,7 +634,7 @@ router.post('/:id/accept', authenticate, requireRole('worker'), async(req, res, 
         const b = rows[0];
         if (b.business_id === req.user.id) throw httpError(403, 'You cannot take your own task');
         await assertActiveAccount(req.user.id);
-        if (b.confidential) await requireAgreement(client.query.bind(client), req.user.id, 'task_nda', bountyId);
+        if (b.confidential) throw httpError(403, 'Confidential tasks are not open to workers');
 
         const found = await client.query(
             `SELECT * FROM bounty_participants WHERE bounty_id = $1 AND worker_id = $2 FOR UPDATE`, [bountyId, req.user.id]
@@ -651,12 +650,9 @@ router.post('/:id/accept', authenticate, requireRole('worker'), async(req, res, 
             throw httpError(409, 'Team tasks are assigned by the business');
         }
 
-        const ndaDone = Boolean(existing && existing.nda_accepted_at) || ndaNow;
-        if (b.requires_authorization && !ndaDone) {
-            throw httpError(400, 'Accept the confidentiality agreement (NDA) before taking this task');
-        }
-        if (roeNow && !ndaDone) {
-            throw httpError(400, 'Accept the NDA before the rules of engagement');
+        const roeDone = Boolean(existing && existing.roe_accepted_at) || roeNow;
+        if (b.requires_authorization && !roeDone) {
+            throw httpError(400, 'Accept the rules of engagement before taking this task');
         }
 
         if (!existing) {
@@ -670,19 +666,17 @@ router.post('/:id/accept', authenticate, requireRole('worker'), async(req, res, 
         }
 
         const saved = await client.query(
-            `INSERT INTO bounty_participants (bounty_id, worker_id, status, nda_accepted_at, roe_accepted_at)
+            `INSERT INTO bounty_participants (bounty_id, worker_id, status, roe_accepted_at)
              VALUES ($1, $2, 'active',
-                     CASE WHEN $3::boolean THEN NOW() END,
-                     CASE WHEN $4::boolean THEN NOW() END)
+                     CASE WHEN $3::boolean THEN NOW() END)
              ON CONFLICT (bounty_id, worker_id) DO UPDATE SET
                status = CASE WHEN bounty_participants.status = 'assigned' THEN 'active' ELSE bounty_participants.status END,
-               nda_accepted_at = COALESCE(bounty_participants.nda_accepted_at, CASE WHEN $3::boolean THEN NOW() END),
-               roe_accepted_at = COALESCE(bounty_participants.roe_accepted_at, CASE WHEN $4::boolean THEN NOW() END),
+               roe_accepted_at = COALESCE(bounty_participants.roe_accepted_at, CASE WHEN $3::boolean THEN NOW() END),
                updated_at = NOW()
-             RETURNING *`, [bountyId, req.user.id, ndaNow, roeNow]
+             RETURNING *`, [bountyId, req.user.id, roeNow]
         );
         await logEvent(client, bountyId, req.user.id, existing ? 'worker_terms_accepted' : 'worker_accepted', {
-            nda: ndaNow, roe: roeNow,
+            roe: roeNow,
         });
         await client.query('COMMIT');
 
