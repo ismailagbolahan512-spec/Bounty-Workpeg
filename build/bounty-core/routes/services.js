@@ -343,8 +343,9 @@ router.post('/requests/:id/take', requireRole('worker'), async(req, res, next) =
             let inserted;
             try {
                 const result = await client.query(
-                    `INSERT INTO appointments (bounty_id, provider_id, starts_at, ends_at, status, proposed_by, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, 'proposed', $5, NOW(), NOW())
+                    `INSERT INTO appointments (bounty_id, provider_id, starts_at, ends_at, status, proposed_by,
+                                               provider_confirmed_at, provider_confirmed_by, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, 'proposed', $5, NOW(), $2, NOW(), NOW())
                      RETURNING id, bounty_id, provider_id, starts_at, ends_at, status`,
                     [request.id, req.user.id, window.starts.toISOString(), window.ends.toISOString(), req.user.id]
                 );
