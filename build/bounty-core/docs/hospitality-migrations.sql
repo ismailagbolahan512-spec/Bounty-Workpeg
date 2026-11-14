@@ -253,3 +253,6 @@ ALTER TABLE appointment_events ADD CONSTRAINT appointment_events_event_check CHE
   'proposed', 'confirmed_by_provider', 'confirmed_by_business',
   'cancelled', 'superseded', 'address_disclosed',
   'payment_made_marked', 'payment_received_marked'));
+
+-- Onboarding: the worker setup screen saves onboarding_done. Additive and idempotent.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN NOT NULL DEFAULT false;

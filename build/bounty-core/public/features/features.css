@@ -240,3 +240,8 @@
   .discover-go { grid-column: 2; justify-self: start; }
 }
 @media (prefers-reduced-motion: reduce) { .discover-strip { transition: none; } }
+
+/* Category checkboxes in the worker setup screen: keep each box its own size, so it never
+   runs into its label. The global checkbox rule is 18px; ux-w-auto had let it stretch. */
+.ux-inline-check { white-space: nowrap; }
+.ux-inline-check input[type="checkbox"] { width: 18px; height: 18px; min-width: 18px; margin: 0; flex: none; }
