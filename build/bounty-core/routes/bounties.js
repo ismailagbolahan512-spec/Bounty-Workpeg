@@ -682,6 +682,14 @@ router.post('/:id/accept', authenticate, requireRole('worker'), async(req, res, 
         await logEvent(client, bountyId, req.user.id, existing ? 'worker_terms_accepted' : 'worker_accepted', {
             roe: roeNow,
         });
+        if (!existing) {
+            // Greet the worker in the task chat straight away, from the business account.
+            await client.query(
+                `INSERT INTO bounty_messages (bounty_id, sender_id, body, created_at)
+                 VALUES ($1, $2, $3, NOW())`,
+                [bountyId, b.business_id, 'Thanks for taking this task. Ask any questions here, and the business will reply in this chat.']
+            );
+        }
         await client.query('COMMIT');
 
         if (!existing) {
