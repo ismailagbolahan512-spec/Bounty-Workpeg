@@ -2815,3 +2815,10 @@ fieldset.field legend { font-weight: 600; margin-bottom: 0.4rem; }
 .nav-links > * {
     white-space: nowrap
 }
+
+/* ---------- Landing hero: the floating callouts overlap the preview card on phones, so they step aside ---------- */
+@media (max-width: 560px) {
+    .float-note {
+        display: none
+    }
+}
