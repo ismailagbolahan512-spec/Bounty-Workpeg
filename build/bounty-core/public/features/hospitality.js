@@ -82,6 +82,7 @@
         if (!need()) return;
         var r = role();
         if (r === 'business') {
+            if (F.discoverPage) return F.discoverPage();
             app().innerHTML = loading('Loading your requests…');
             return Promise.all([K().api('/api/services/requests?mine=1'), K().api('/api/services/appointments')]).then(function(res) {
                 businessHome(res[0].requests || [], res[1].appointments || []);

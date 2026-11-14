@@ -15,6 +15,9 @@
         render: function() { return discover(); }
     });
 
+    // The Hospitality home for businesses uses this page.
+    F.discoverPage = discover;
+
     function shell(body) {
         return '<section class="page discover"><div class="container">' + body + '</div></section>';
     }
@@ -37,6 +40,25 @@
         '</a>';
     }
 
+    // Shows the business's own requests under the strips, so nothing is lost when this page is the Hospitality home.
+    function loadMine() {
+        var box = app().querySelector('.discover-mine');
+        if (!box) return;
+        K().api('/api/services/requests?mine=1').then(function(res) {
+            var rows = res.requests || [];
+            var html = rows.length === 0
+                ? '<div class="empty-state"><h3>No requests yet</h3><p>Pick an area above to post your first one.</p></div>'
+                : '<ul class="list-plain">' + rows.map(function(q) {
+                    return '<li class="card-row"><a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
+                        '<span class="small muted">' + esc(q.area_label) + ' · ' + esc(q.pending_quotes) + ' pending quote' +
+                        (Number(q.pending_quotes) === 1 ? '' : 's') + '</span></li>';
+                }).join('') + '</ul>';
+            box.innerHTML = '<h2 class="h4">Your requests</h2>' + html;
+        }).catch(function() {
+            box.innerHTML = '<h2 class="h4">Your requests</h2><p class="small muted">Could not load your requests.</p>';
+        });
+    }
+
     function discover() {
         if (!K().isAuthenticated()) { K().go('auth/login'); return; }
         if (K().getRole() !== 'business') {
@@ -55,12 +77,13 @@
                 '<div class="discover-list">' +
                     industries.map(function(i, n) { return strip(i, n === 0); }).join('') +
                 '</div>' +
-                '<p class="small muted"><a class="inline-link" href="#/services">Back to your requests</a></p>'
+                '<section class="hosp-section discover-mine"><div class="loading-line"><span class="spinner"></span> Loading your requests…</div></section>'
             );
             // No inline handlers (CSP script-src 'self'): a missing photo drops out so the tonal panel shows.
             Array.prototype.forEach.call(app().querySelectorAll('.discover-photo img'), function(img) {
                 img.addEventListener('error', function() { img.remove(); });
             });
+            loadMine();
         }).catch(function(error) {
             app().innerHTML = shell('<div class="notice warning">' +
                 esc(K().friendlyApiError(error, 'Could not load services.')) + '</div>');
