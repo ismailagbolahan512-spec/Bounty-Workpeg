@@ -151,6 +151,8 @@ async function verifiedUser(email, role, name) {
         await bp.fill('[data-revise-box] textarea', 'Please explain the approach in more detail.');
         bp.once('dialog', (d) => d.accept());
         await bp.click('[data-revise-send]');
+        // Sending asks in place now: confirm inside the card.
+        await bp.click('[data-inline-confirm] [data-yes]');
         await bp.waitForFunction(() => (document.querySelector('#review-list') || {}).textContent?.includes('Changes requested'), null, { timeout: 8000 }).catch(() => null);
         ok('business sends the submission back for changes', (await bp.textContent('#review-list')).includes('Changes requested'));
 

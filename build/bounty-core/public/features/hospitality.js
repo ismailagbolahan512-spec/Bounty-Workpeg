@@ -498,9 +498,14 @@
         var node = document.getElementById('thread');
         if (!node) return;
         K().api('/api/services/appointments/' + encodeURIComponent(apptId) + '/messages').then(function(res) {
-            node.innerHTML = res.messages.length === 0
+            var html = res.messages.length === 0
                 ? '<p class="small muted">No messages yet.</p>'
                 : res.messages.map(threadLine).join('');
+            // Redraw only when something changed, so the list does not jump every refresh.
+            if (node.getAttribute('data-html-key') !== html) {
+                node.setAttribute('data-html-key', html);
+                node.innerHTML = html;
+            }
         }).catch(function() {});
     }
 
@@ -540,11 +545,11 @@
     // kind of work they take, where they cover, and when they are free. Both can be left for later.
     // Setup questions open as a side drawer, not a centred dialog: the person can read the page
     // behind it, and "Later" or Escape always closes it without saving.
+    // Dismissed prompts stay away for this browser session, so they never return on each page load.
+    function laterKey(id) { return "bounty_prompt_later:" + id; }
     function promptBox(id, title, intro, inner, onSave) {
         if (document.getElementById(id)) return;
-        var back = document.createElement("div");
-        back.className = "drawer-backdrop";
-        back.id = id + "-backdrop";
+        try { if (sessionStorage.getItem(laterKey(id))) return; } catch (e) { /* storage unavailable: show it */ }
         var box = document.createElement("aside");
         box.id = id;
         box.className = "drawer";
@@ -558,19 +563,19 @@
             "<p class=\"form-error\" data-prompt-error hidden></p></div>" +
             "<div class=\"drawer-foot\"><button class=\"btn\" type=\"button\" data-later>Later</button>" +
             "<button class=\"btn btn-primary\" type=\"button\" data-save>Save</button></div>";
-        document.body.appendChild(back);
+        // No backdrop: the page stays usable behind the drawer.
         document.body.appendChild(box);
-        document.body.style.overflow = "hidden";
-        function onKey(e) { if (e.key === "Escape") close(); }
+        function onKey(e) { if (e.key === "Escape") later(); }
         function close() {
             if (box.parentNode) box.parentNode.removeChild(box);
-            if (back.parentNode) back.parentNode.removeChild(back);
-            document.body.style.overflow = "";
             document.removeEventListener("keydown", onKey);
         }
+        function later() {
+            try { sessionStorage.setItem(laterKey(id), "1"); } catch (e) { /* ignore */ }
+            close();
+        }
         document.addEventListener("keydown", onKey);
-        box.querySelectorAll("[data-later]").forEach(function(btn) { btn.addEventListener("click", close); });
-        back.addEventListener("click", close);
+        box.querySelectorAll("[data-later]").forEach(function(btn) { btn.addEventListener("click", later); });
         box.querySelector("[data-save]").addEventListener("click", function() {
             var button = box.querySelector("[data-save]");
             var error = box.querySelector("[data-prompt-error]");
@@ -634,10 +639,49 @@
             });
     }
 
+    // Setup questions do not open by themselves. A banner at the top of the page offers them, and
+    // "Later" hides it for this browser session.
+    var pendingSetup = null;
+    function setupDismissed() {
+        try { return !!sessionStorage.getItem("bounty_setup_later"); } catch (e) { return false; }
+    }
+    function placeSetupBanner() {
+        var old = document.getElementById("setup-banner");
+        if (old) old.parentNode.removeChild(old);
+        if (!pendingSetup || setupDismissed() || !K().isAuthenticated()) return;
+        var app = K().app;
+        if (!app) return;
+        var banner = document.createElement("div");
+        banner.id = "setup-banner";
+        banner.className = "notice";
+        banner.setAttribute("role", "region");
+        banner.setAttribute("aria-label", "Finish setting up your profile");
+        banner.style.cssText = "margin:16px auto 0;max-width:1120px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap";
+        var text = pendingSetup === "industry"
+            ? "Tell us what industry you run, so posting a request takes a minute."
+            : "Tell us how and when you work, so matching fits your hours.";
+        banner.innerHTML = "<span>" + esc(text) + "</span><span style=\"display:flex;gap:8px\">" +
+            "<button class=\"btn btn-sm btn-primary\" type=\"button\" data-setup-open>Set up now</button>" +
+            "<button class=\"btn btn-sm\" type=\"button\" data-setup-later>Later</button></span>";
+        app.insertBefore(banner, app.firstChild);
+        banner.querySelector("[data-setup-open]").addEventListener("click", function() {
+            var kind = pendingSetup;
+            banner.parentNode.removeChild(banner);
+            if (kind === "industry") showIndustryPrompt(); else showAvailabilityPrompt();
+        });
+        banner.querySelector("[data-setup-later]").addEventListener("click", function() {
+            try { sessionStorage.setItem("bounty_setup_later", "1"); } catch (e) { /* ignore */ }
+            placeSetupBanner();
+        });
+    }
     F.afterSignIn = function(me) {
         if (!me || !K().isAuthenticated()) return;
-        if (me.role === 'business' && !me.industry) return showIndustryPrompt();
-        if (me.role === 'worker' && (!me.work_modes || me.work_modes.length === 0)) return showAvailabilityPrompt();
+        if (me.role === "business" && !me.industry) pendingSetup = "industry";
+        else if (me.role === "worker" && (!me.work_modes || me.work_modes.length === 0)) pendingSetup = "availability";
+        else pendingSetup = null;
+        placeSetupBanner();
     };
+    // Called by the shell after each page renders, so the banner survives navigation.
+    F.afterRender = placeSetupBanner;
 
 })();

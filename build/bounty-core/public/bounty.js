@@ -3031,6 +3031,7 @@
         renderHeader();
         renderFooter();
         app.focus({ preventScroll: true });
+        if (window.BountyFeatures && window.BountyFeatures.afterRender) window.BountyFeatures.afterRender();
         if (isAuthenticated()) {
             loadNotifications();
             checkOnboarding();

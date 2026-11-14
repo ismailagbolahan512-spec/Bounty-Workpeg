@@ -118,6 +118,7 @@ async function signupVerifiedBase(email, role, name) {
     const newDeadline = new Date(Date.now() + 9 * 86400000).toISOString().slice(0, 16);
     await bizPage.fill('[data-revise-deadline]', newDeadline);
     await bizPage.click('[data-revise-send]');
+    await bizPage.click('[data-inline-confirm] [data-yes]');
     await sleep(1200);
     const after = await api('GET', '/api/submissions/mine', null, worker.token);
     const mine = Array.isArray(after.body) ? after.body.find((s) => s.bounty_id === bid) : null;
