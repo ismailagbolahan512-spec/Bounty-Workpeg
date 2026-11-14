@@ -7,11 +7,15 @@
 //   GET  /api/peg/business/requests/:id   one request with its quotes and visit (services:read)
 //   GET  /api/peg/business/appointments   the business's live visits (services:read)
 //   POST /api/peg/confirmations           ask the user to approve a sensitive action
+//   POST /api/peg/bounties                post a bounty, once the owner has approved these exact details (bounties:publish)
+//   POST /api/peg/ai/bounty-draft         AI draft from a prompt; saves nothing (bounties:publish)
 
 const express = require('express');
 const { pool } = require('../db');
 const { authenticateIntegration, requireScope, httpError } = require('../middleware/auth');
-const { logAudit } = require('../services/protection');
+const { logAudit, assertActiveAccount, requireAgreement } = require('../services/protection');
+const pegBounties = require('../services/peg-bounties');
+const { generateBountyDraft } = require('../services/ai');
 const tokens = require('../services/integration-tokens');
 const hs = require('../services/hospitality');
 const { flags } = require('../services/schema-flags');
@@ -202,6 +206,102 @@ router.post('/confirmations', async(req, res, next) => {
         res.status(201).json({
             id: conf.id, action: conf.action, expires_at: conf.expires_at, status: 'awaiting_user_approval',
         });
+    } catch (err) { next(err); }
+});
+
+// Updates for the business: every notification it receives, such as a worker taking a task.
+// Returns those created after `since` (an ISO time), oldest first. Without `since`, the last 24 hours.
+// The peg polls this with its own cursor, so a notification appears once.
+router.get('/notifications', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    try {
+        const sinceRaw = typeof req.query.since === 'string' ? new Date(req.query.since) : null;
+        const since = sinceRaw && !Number.isNaN(sinceRaw.getTime()) ? sinceRaw : new Date(Date.now() - 24 * 3600 * 1000);
+        const { rows } = await pool.query(
+            `SELECT id, message, link, created_at FROM notifications
+             WHERE user_id = $1 AND created_at > $2
+             ORDER BY created_at ASC LIMIT 50`,
+            [req.user.id, since]
+        );
+        res.json(rows);
+    } catch (err) { next(err); }
+});
+
+// Limits for posting from Workpeg chat without a separate approval on Bounty. The chat post is
+// the owner's approval, so these caps keep one connection token from posting much at once.
+const PEG_DAILY_LIMIT = 5;
+const PEG_REWARD_CAP = 100000;
+
+// Posts a bounty for the business, from the Workpeg chat. Two ways in:
+//   - { payload }: the chat post. Allowed within PEG_DAILY_LIMIT and PEG_REWARD_CAP; the post is the approval.
+//   - { confirmation_id, payload }: the older path, where the owner approved this exact payload on Bounty.
+// Either way the insert and the audit entry happen in one transaction.
+router.post('/bounties', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    const client = await pool.connect();
+    try {
+        const body = req.body || {};
+        await assertActiveAccount(req.user.id);
+        await requireAgreement(pool.query.bind(pool), req.user.id, 'creator_protection_business');
+        const fields = pegBounties.validatePegBounty(body.payload);
+        await client.query('BEGIN');
+        if (typeof body.confirmation_id === 'string' && body.confirmation_id !== '') {
+            const used = await tokens.consumeConfirmation(client, {
+                confirmationId: body.confirmation_id, tokenId: req.integration.tokenId, action: 'bounties:publish', payload: body.payload,
+            });
+            if (!used) {
+                throw httpError(403, 'This approval is missing, already used, expired, or does not match these details');
+            }
+        } else {
+            if (Number(fields.reward_amount) > PEG_REWARD_CAP) {
+                throw httpError(422, 'Posts from Workpeg are limited to a reward of ' + PEG_REWARD_CAP + '. Post larger bounties on Bounty.');
+            }
+            const { rows: recent } = await client.query(
+                "SELECT COUNT(*)::int AS n FROM audit_events WHERE actor_id = $1 AND action = 'bounty.created_from_workpeg' AND created_at > NOW() - INTERVAL '24 hours'",
+                [req.user.id]
+            );
+            if (recent[0].n >= PEG_DAILY_LIMIT) {
+                throw httpError(429, 'You have posted ' + PEG_DAILY_LIMIT + ' bounties from Workpeg today. Try again tomorrow.');
+            }
+        }
+        const row = await pegBounties.insertPegBounty(client, req.user.id, fields, false);
+        await logAudit(client.query.bind(client), req.user.id, 'bounty.created_from_workpeg', 'bounty', row.id, {
+            title: row.title,
+        });
+        await client.query('COMMIT');
+        res.status(201).json(row);
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        next(err);
+    } finally {
+        client.release();
+    }
+});
+
+// Reads a budget such as "Reward: 30000 NGN", "budget around 30,000 naira" or "₦30,000" from the
+// request, for drafts where the drafter did not find one. Returns null when nothing sensible is found.
+function readBudget(text) {
+    const m = /(?:reward|budget|pay|price|offer)[^\d]{0,25}(\d[\d,]*(?:\.\d{1,2})?)/i.exec(text) ||
+        /(\d[\d,]*(?:\.\d{1,2})?)\s*(?:naira|ngn|₦)/i.exec(text);
+    if (!m) return null;
+    const amount = Number(m[1].replace(/,/g, ''));
+    return amount >= 1 && amount <= 1000000 ? amount : null;
+}
+
+// A draft from a prompt. Saves nothing. Tasks that need an authorization statement, rules of
+// engagement and an NDA are refused here: the peg cannot set those, so they must be made on Bounty.
+router.post('/ai/bounty-draft', requireScope('bounties:publish'), businessOnly, async(req, res, next) => {
+    try {
+        const prompt = typeof (req.body || {}).prompt === 'string' ? req.body.prompt.trim() : '';
+        if (prompt.length < 10) throw httpError(400, 'Describe the goal in at least 10 characters');
+        if (prompt.length > 4000) throw httpError(400, 'Keep the description under 4000 characters');
+        const result = await generateBountyDraft(req.user.id, prompt);
+        if (!result.draft.suggested_reward) {
+            const amount = readBudget(prompt);
+            if (amount !== null) result.draft.suggested_reward = { amount, note: 'Read from your request. Check it before posting.' };
+        }
+        if (result.draft.requires_authorization) {
+            throw httpError(422, 'This kind of task needs a written authorization and an NDA. Create it on Bounty, not from Workpeg.');
+        }
+        res.json(result);
     } catch (err) { next(err); }
 });
 

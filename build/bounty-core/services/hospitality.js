@@ -25,6 +25,8 @@ const PRICE_MAX = 9999999999.99;
 const NOTE_MAX = 1000;
 const MESSAGE_MAX = 1000;
 const SERVICE_AREA_MAX = 240;
+const WORKER_NOTES_MAX = 500;
+const REVIEW_NOTE_MAX = 500;
 const WINDOW_MAX_HOURS = 24;
 
 const STATUS_CODES = ['on_the_way', 'arrived', 'started', 'finished'];
@@ -101,11 +103,39 @@ function validateRequest(body, now) {
     if (hours > DEADLINE_MAX_DAYS * 24) throw httpError(400, `The deadline must be within ${DEADLINE_MAX_DAYS} days`);
     if (!catalogue.validIndustry(b.industry)) throw httpError(400, 'Choose the industry you run');
     const serviceLabels = catalogue.validateServiceLabels(b.services);
+    const workerNotes = validateWorkerNotes(b.worker_notes);
+    const urgent = b.urgent === true;
     return {
         industry: b.industry, serviceLabels,
         title, problem, needs, price, currency, region: b.region, timeZone,
-        address, areaLabel, deadline,
+        address, areaLabel, deadline, workerNotes, urgent,
     };
+}
+
+// Anything the worker needs to know to get in and do the job: gate codes, parking, who to ask
+// for. Stored with the address and shown to the provider only once both sides have confirmed.
+function validateWorkerNotes(text) {
+    if (text === null || text === undefined || text === '') return null;
+    if (typeof text !== 'string') throw httpError(400, 'What the worker needs to know must be text');
+    const t = text.trim();
+    if (t.length === 0) return null;
+    if (t.length > WORKER_NOTES_MAX) throw httpError(400, `What the worker needs to know must be ${WORKER_NOTES_MAX} characters or fewer`);
+    return t;
+}
+
+// A review: a star rating from 1 to 5 and an optional short note.
+function validateReview(body) {
+    const b = body || {};
+    const rating = Number(b.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw httpError(400, 'Choose a rating from 1 to 5');
+    let note = null;
+    if (b.note !== undefined && b.note !== null && b.note !== '') {
+        if (typeof b.note !== 'string') throw httpError(400, 'The review note must be text');
+        const t = b.note.trim();
+        if (t.length > REVIEW_NOTE_MAX) throw httpError(400, `The review note must be ${REVIEW_NOTE_MAX} characters or fewer`);
+        note = t.length ? t : null;
+    }
+    return { rating, note };
 }
 
 // What the worker tells the business about the areas they cover: free text, up to 240 chars.
@@ -256,7 +286,7 @@ module.exports = {
     WORK_MODES, validateWorkModes, validateClock, visitFitsHours, validateServiceArea,
     CATEGORY, STATUS_CODES, STATUS_TEXT, ADDRESS_LIKE,
     zoneOffsetMinutes, localToUtc, formatLocal,
-    validateRequest, validateQuote, validateWindow, validateChatInput,
+    validateRequest, validateQuote, validateWindow, validateChatInput, validateWorkerNotes, validateReview,
     canSeeAddress,
     APPOINTMENT_TRANSITIONS, assertTransition, partyOf, assertCanChat, looksLikeAddress,
 };

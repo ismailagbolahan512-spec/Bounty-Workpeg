@@ -67,7 +67,8 @@
 
   /* Status colours — same across themes (contrast is handled by the -bg) */
   --success: #45A369;
-  --warning: #B57F2A;
+  --success-strong: #1F6B3A;
+  --warning: #7A5410;
   --critical: #C94A3A;
   --info: #4A7CC9;
 }
@@ -80,6 +81,7 @@
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --warning: #D9A54A;
 
   /* Ink — structural surfaces, from deep to sunk */
   --ink-canvas:   #0E0F13;
@@ -96,7 +98,7 @@
   /* Paper — text, from primary to disabled */
   --text-primary:   #F4F3EF;
   --text-secondary: #B6B4AC;
-  --text-tertiary:  #7F7D76;
+  --text-tertiary:  #9A988F;
   --text-disabled:  #4F4E48;
 
   /* Signal — the one accent. Warm bronze-amber, not citrus. */
@@ -122,6 +124,10 @@
 /* --- Light (explicit) --------------------------------------- */
 :root[data-theme="light"] {
   color-scheme: light;
+  --success: #1F6B3A;
+  --warning: #7A5410;
+  --critical: #9A3224;
+  --info: #2F5597;
 
   --ink-canvas:   #F8F8F6;
   --ink-surface:  #FFFFFF;
@@ -135,7 +141,7 @@
 
   --text-primary:   #1A1B22;
   --text-secondary: #595A62;
-  --text-tertiary:  #898A91;
+  --text-tertiary:  #5E5F67;
   --text-disabled:  #BABABF;
 
   --signal:         #8A5614;
@@ -159,6 +165,10 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
+    --warning: #7A5410;
+    --success: #1F6B3A;
+    --critical: #9A3224;
+    --info: #2F5597;
 
     --ink-canvas:   #F8F8F6;
     --ink-surface:  #FFFFFF;
@@ -172,7 +182,7 @@
 
     --text-primary:   #1A1B22;
     --text-secondary: #595A62;
-    --text-tertiary:  #898A91;
+    --text-tertiary:  #5E5F67;
     --text-disabled:  #BABABF;
 
     --signal:         #8A5614;

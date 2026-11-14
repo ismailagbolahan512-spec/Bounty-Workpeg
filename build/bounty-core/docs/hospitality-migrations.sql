@@ -224,3 +224,32 @@ ALTER TABLE bounties ADD COLUMN IF NOT EXISTS service_labels TEXT[] NOT NULL DEF
 ALTER TABLE bounties DROP CONSTRAINT IF EXISTS bounties_service_labels_check;
 ALTER TABLE bounties ADD CONSTRAINT bounties_service_labels_check
   CHECK (cardinality(service_labels) <= 10);
+
+-- 036-worker-notes-urgent-reviews
+-- What the worker needs to know (gate codes, parking, who to ask): shown with the address only
+-- after both sides confirm. urgent marks a guest who is waiting, so providers see it first.
+ALTER TABLE service_locations ADD COLUMN IF NOT EXISTS worker_notes TEXT
+  CHECK (worker_notes IS NULL OR char_length(worker_notes) <= 500);
+ALTER TABLE service_locations ADD COLUMN IF NOT EXISTS urgent BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- One review per person per visit, after the provider marks the visit finished.
+CREATE TABLE IF NOT EXISTS service_reviews (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  appointment_id UUID NOT NULL REFERENCES appointments(id) ON DELETE RESTRICT,
+  reviewer_id    UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  rating         SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  note           TEXT CHECK (note IS NULL OR char_length(note) <= 500),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (appointment_id, reviewer_id)
+);
+
+-- 037-payment-made
+-- Hospitality is paid directly between the two sides. Nothing is held in escrow and no money moves
+-- through Bounty. Each side records that payment was made or received; the visit is paid once both have.
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS business_paid_at TIMESTAMPTZ;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS provider_received_at TIMESTAMPTZ;
+ALTER TABLE appointment_events DROP CONSTRAINT IF EXISTS appointment_events_event_check;
+ALTER TABLE appointment_events ADD CONSTRAINT appointment_events_event_check CHECK (event IN (
+  'proposed', 'confirmed_by_provider', 'confirmed_by_business',
+  'cancelled', 'superseded', 'address_disclosed',
+  'payment_made_marked', 'payment_received_marked'));

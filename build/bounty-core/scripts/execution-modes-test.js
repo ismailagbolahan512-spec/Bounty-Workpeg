@@ -283,6 +283,12 @@ function submission(bountyId, extra = {}) {
     await sleep(3000);
     const expired = await api('GET', `/api/bounties/${short.body.id}`, null, t3);
     check('a task past its deadline is expired with the reason', expired.body.status === 'expired' && expired.body.closure_reason === 'deadline_passed', expired.body);
+    const expiredPublic = await api('GET', `/api/bounties/${short.body.id}`, null, null);
+    check('an expired task is hidden from the public', expiredPublic.status === 404, expiredPublic.body);
+    const expiredList = await api('GET', '/api/bounties?status=expired&limit=50', null, null);
+    check('an expired task is not in the public list', !(expiredList.body.bounties || []).some((x) => x.id === short.body.id), expiredList.body);
+    const expiredOwner = await api('GET', `/api/bounties/${short.body.id}`, null, biz);
+    check('the business that posted it still sees the expired task', expiredOwner.status === 200 && expiredOwner.body.status === 'expired', expiredOwner.body);
     await sleep(600);
     const expNotes = await api('GET', '/api/notifications', null, t3);
     check('the worker is told the task reached its deadline', expNotes.body.some((n) => /reached its deadline/.test(n.message)), expNotes.body.map((n) => n.message));

@@ -54,7 +54,8 @@ function checkSubmission(fields, submissionType) {
 }
 
 // Bounty states in which a submission may still be approved.
-const APPROVABLE_BOUNTY_STATUSES = ['open', 'in_progress', 'under_review'];
+// 'expired' stays approvable: the business still decides on work it received before the deadline.
+const APPROVABLE_BOUNTY_STATUSES = ['open', 'in_progress', 'under_review', 'expired'];
 
 // ------------------------------------------- POST /api/submissions
 router.post('/', authenticate, requireRole('worker'), async(req, res, next) => {

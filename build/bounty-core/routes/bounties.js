@@ -214,6 +214,11 @@ router.get('/', optionalAuth, async(req, res, next) => {
         conditions.push(`(cardinality(b.regions) = 0 OR b.business_id = $${params.length + 1}::uuid OR $${params.length + 2}::char(2) = ANY(b.regions))`);
         params.push(viewer ? viewer.id : null, viewer ? viewer.country : null);
 
+        // A bounty past its deadline is hidden from the public. The business that posted it still sees it
+        // and can make its decisions.
+        conditions.push(`(b.status <> 'expired' OR b.business_id = $${params.length + 1}::uuid)`);
+        params.push(viewer ? viewer.id : null);
+
         const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
         // Count total
@@ -328,8 +333,17 @@ router.get('/:id', optionalAuth, async(req, res, next) => {
         }
 
         const b = rows[0];
-        if (!canSeeTask(b, await viewerOf(req.user))) {
+        const viewer = await viewerOf(req.user);
+        if (!canSeeTask(b, viewer)) {
             throw httpError(404, 'Bounty not found');
+        }
+        // Expired bounties are hidden from the public. The business that posted them still sees them,
+        // and so does anyone who took the task, so they keep their record of it.
+        if (b.status === 'expired' && !(viewer && String(viewer.id) === String(b.business_id))) {
+            const { rows: took } = viewer
+                ? await pool.query('SELECT 1 FROM bounty_participants WHERE bounty_id = $1 AND worker_id = $2 LIMIT 1', [bountyId, viewer.id])
+                : { rows: [] };
+            if (took.length === 0) throw httpError(404, 'Bounty not found');
         }
 
         const deps = await pool.query(

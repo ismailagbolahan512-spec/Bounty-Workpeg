@@ -1,4 +1,5 @@
 {
   "namespace": "bounty",
-  "summary": "Lets a business see their hospitality service requests, quotes and visits from Workpeg."
+  "sdk": "0.163.0",
+  "summary": "Lets a business see its hospitality service requests from Workpeg, and post a bounty from a chat prompt."
 }

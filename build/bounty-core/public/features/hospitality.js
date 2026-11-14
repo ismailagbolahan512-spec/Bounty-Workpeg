@@ -59,6 +59,24 @@
         }
     });
 
+    // ------------------------------------------------------------------ hero
+    // A warm welcome for the page. Colours are fixed (terracotta and cream) so the white text
+    // keeps 5.8:1 contrast in light and dark modes. Counts come from data the page already loads.
+    function greeting() {
+        var h = new Date().getHours();
+        return h < 12 ? 'Good morning' : (h < 17 ? 'Good afternoon' : 'Good evening');
+    }
+    function stat(value, label) {
+        return '<div class="hosp-stat"><strong>' + esc(value) + '</strong><span>' + esc(label) + '</span></div>';
+    }
+    function hero(eyebrow, title, lead, stats, cta) {
+        return '<header class="hosp-hero"><div class="hosp-hero-text">' +
+            '<p class="hosp-eyebrow">' + esc(greeting()) + ' · ' + esc(eyebrow) + '</p>' +
+            '<h1>' + esc(title) + '</h1><p class="hosp-lead">' + esc(lead) + '</p>' +
+            (cta || '') + '</div>' +
+            '<div class="hosp-stats">' + stats.join('') + '</div></header>';
+    }
+
     // ------------------------------------------------------------------ home
     function home() {
         if (!need()) return;
@@ -94,16 +112,19 @@
         var list = requests.length === 0
             ? '<div class="empty-state"><h3>No requests yet</h3><p>Describe what is wrong, what is needed and a price. Providers in your region will send quotes.</p></div>'
             : '<ul class="list-plain">' + requests.map(function(q) {
-                return '<li class="card-row"><a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
+                return '<li class="card-row">' + (q.urgent ? '<span class="badge badge-signal">Guest waiting</span> ' : '') +
+                    '<a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
                     '<span class="small muted">' + money(q.price, q.currency) + ' · ' + esc(q.area_label) + ' · ' + when(q.local_deadline) +
                     ' · ' + esc(q.pending_quotes) + ' pending quote' + (Number(q.pending_quotes) === 1 ? '' : 's') + '</span></li>';
             }).join('') + '</ul>';
-        app().innerHTML = shell(
-            '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>Your requests</h1>' +
-            '<p class="muted">Ask for the help you need. The exact address is shared only with the provider you choose, after you both confirm.</p></div>' +
-            '<div><a class="btn btn-primary btn-sm" href="#/services/new">New request</a></div></div>' +
-            list +
-            '<h2 class="h4">Visits</h2>' + visitList(appointments)
+        var pending = requests.reduce(function(sum, q) { return sum + Number(q.pending_quotes || 0); }, 0);
+        app().innerHTML = shell('<div class="hosp-page">' +
+            hero('Hospitality services', 'Get help for your guests, quickly',
+                'Describe what is needed and the price you will pay. Nearby providers send quotes, and the address opens only after you both confirm.',
+                [stat(requests.length, 'open requests'), stat(pending, 'quotes to review'), stat(appointments.length, 'visits')],
+                '<a class="hosp-cta" href="#/services/new">Start a new request</a>') +
+            '<div class="hosp-section"><h2 class="h4">Your requests</h2>' + list + '</div>' +
+            '<div class="hosp-section"><h2 class="h4">Visits</h2>' + visitList(appointments) + '</div></div>'
         );
     }
 
@@ -120,15 +141,17 @@
                 : '<ul class="list-plain">' + requests.map(function(q) {
                     var mine = q.my_quote
                         ? ' · your quote: ' + money(q.my_quote.amount, q.currency) + ' (' + esc(q.my_quote.status) + ')' : '';
-                    return '<li class="card-row"><a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
+                    var tag = q.urgent ? '<span class="badge badge-signal">Guest waiting</span> ' : '';
+                    return '<li class="card-row">' + tag + '<a href="#/services/' + esc(q.id) + '"><strong>' + esc(q.title) + '</strong></a> ' +
                         '<span class="small muted">' + money(q.price, q.currency) + ' · ' + esc(q.area_label) + ' · ' + when(q.local_deadline) + mine + '</span></li>';
                 }).join('') + '</ul>');
-        app().innerHTML = shell(
-            '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>Open requests</h1>' +
-            '<p class="muted">Read the area for each request and quote if you can reach. The exact address opens only after both sides confirm.</p>' +
-            profileNote + '</div></div>' +
-            list +
-            '<h2 class="h4">Visits</h2>' + visitList(appointments)
+        app().innerHTML = shell('<div class="hosp-page">' +
+            hero('Hospitality services', 'Work close to home',
+                'Read the area for each request and quote if you can reach it. The exact address opens only after both sides confirm.',
+                [stat(requests.length, 'open requests nearby'), stat(appointments.length, 'your visits')], '') +
+            '<div class="hosp-section">' + profileNote + '</div>' +
+            '<div class="hosp-section"><h2 class="h4">Open requests</h2>' + list + '</div>' +
+            '<div class="hosp-section"><h2 class="h4">Visits</h2>' + visitList(appointments) + '</div></div>'
         );
     }
 
@@ -141,7 +164,7 @@
         }
         app().innerHTML = loading('Opening the request form…');
         Promise.all([K().api('/api/global/regions'), K().api('/api/services/catalogue'), K().api('/api/profile/me')]).then(function(res) {
-            requestForm(res[0].regions || [], res[1].industries || [], res[2].industry || '');
+            requestForm(res[0].regions || [], res[1].industries || [], K().queryParam('industry') || res[2].industry || '');
         }).catch(function(error) { app().innerHTML = failed(error, 'Could not open the form.'); });
     }
 
@@ -187,7 +210,11 @@
             '<input id="req-price" type="number" min="1" step="0.01" required placeholder="25000"></div></div>' +
             '<div class="field"><label for="req-area">Area</label><input id="req-area" maxlength="120" required placeholder="For example, Victoria Island">' +
             '<p class="small muted">The area providers see while deciding whether to quote. The street address below opens only after both sides confirm.</p></div>' +
-            '<div class="field"><label for="req-address">Service address</label><input id="req-address" minlength="5" maxlength="500" required placeholder="Street, building, landmark"></div>' +
+            '<div class="field"><label for="req-address">Service address</label><input id="req-address" minlength="5" maxlength="500" required placeholder="Street, building, landmark">' +
+            '<p class="small muted">Shared only with the provider you choose, after you both confirm the visit.</p></div>' +
+            '<div class="field"><label for="req-notes">What the worker needs to know</label><textarea id="req-notes" rows="3" maxlength="500" placeholder="Gate code, parking, who to ask for at reception, anything they must bring."></textarea>' +
+            '<p class="small muted">Shared with the same provider, after you both confirm. Up to 500 characters.</p></div>' +
+            '<div class="field"><label class="check-row"><input id="req-urgent" type="checkbox"> A guest is waiting. Providers see this request first.</label></div>' +
             '<div class="field"><label for="req-deadline">Needed by (local time at the place)</label><input id="req-deadline" type="datetime-local" required></div>' +
             '<p class="form-error" id="req-error" hidden></p>' +
             '<div class="form-actions"><a class="btn btn-sm" href="#/services">Cancel</a><button class="btn btn-primary btn-sm" id="req-submit" type="submit">Post request</button></div>' +
@@ -277,6 +304,8 @@
                 region: r.code,
                 currency: r.currency,
                 address: document.getElementById('req-address').value,
+                worker_notes: document.getElementById('req-notes').value,
+                urgent: document.getElementById('req-urgent').checked,
                 area_label: document.getElementById('req-area').value,
                 deadline: document.getElementById('req-deadline').value
             };
@@ -311,18 +340,137 @@
             : (q.address
                 ? '<p><strong>Address:</strong> ' + esc(q.address) + '</p>'
                 : '<p class="small muted">Area: ' + esc(q.area_label) + '. The exact address opens after both sides confirm the visit.</p>');
-        var header = '<div class="page-head"><div><p class="eyebrow">Hospitality services</p><h1>' + esc(q.title) + '</h1>' + facts + '</div></div>';
+        var header = '<div class="page-head"><div>' + (q.urgent ? '<p><span class="badge badge-signal">Guest waiting</span></p>' : '') +
+            '<p class="eyebrow">Hospitality services</p><h1>' + esc(q.title) + '</h1>' + facts + '</div></div>';
+        var notesBlock = q.worker_notes
+            ? '<p><strong>What the worker needs to know:</strong> ' + when(q.worker_notes) + '</p>' : '';
         var body = '<div class="detail-section"><h2>What is wrong</h2><p>' + when(q.problem) + '</p>' +
             '<h2>What is needed</h2><p>' + when(q.needs) + '</p>' +
             (q.services && q.services.length ? '<p><strong>Services:</strong> ' + q.services.map(esc).join(', ') + '</p>' : '') +
-            placeBlock + '</div>';
+            placeBlock + notesBlock + '</div>';
 
         body += owner ? quotesBlock(q, quotes) : providerBlock(q, quotes);
-        body += '<div id="appt-slot"></div>';
+        body += '<div id="visit-slot"></div><div id="appt-slot"></div>';
         app().innerHTML = shell(header + body);
 
         bindQuoteForms(q);
         if (q.appointment) mountAppointment(q.appointment, q, owner);
+        loadVisit(q);
+    }
+
+    // ------------------------------------------------------------------ visit progress and reviews
+    var VISIT_STEPS = [
+        ['confirmed', 'Confirmed'], ['on_the_way', 'On the way'], ['arrived', 'Arrived'],
+        ['started', 'Started'], ['finished', 'Finished'],
+    ];
+
+    function progressHTML(codes) {
+        var reached = VISIT_STEPS.filter(function(step) { return codes.indexOf(step[0]) !== -1; });
+        var last = reached.length ? reached[reached.length - 1][0] : 'confirmed';
+        var items = VISIT_STEPS.map(function(step) {
+            var done = step[0] === 'confirmed' || codes.indexOf(step[0]) !== -1;
+            var current = step[0] === last;
+            return '<li class="visit-step' + (done ? ' done' : '') + '"' + (current ? ' aria-current="step"' : '') + '>' +
+                '<span class="visit-dot" aria-hidden="true"></span><span>' + esc(step[1]) + '</span></li>';
+        }).join('');
+        return '<div class="detail-section"><h2>Visit progress</h2><ol class="visit-progress">' + items + '</ol></div>';
+    }
+
+    function reviewHTML(appointmentId, finished, reviews) {
+        if (!finished) return '';
+        var mine = reviews.mine;
+        var theirs = reviews.theirs;
+        var theirsText = theirs
+            ? '<p class="small"><strong>Their review:</strong> ' + stars(theirs.rating) + (theirs.note ? ' · ' + when(theirs.note) : '') + '</p>'
+            : '<p class="small muted">The other side has not reviewed this visit yet.</p>';
+        if (mine) {
+            return '<div class="detail-section"><h2>Your review</h2><p>' + stars(mine.rating) + (mine.note ? ' · ' + when(mine.note) : '') + '</p>' + theirsText + '</div>';
+        }
+        return '<div class="detail-section"><h2>Review this visit</h2>' +
+            '<form id="review-form" class="form-card form" data-appointment="' + esc(appointmentId) + '">' +
+            '<div class="field"><label for="review-rating">Rating</label><select id="review-rating" required>' +
+            '<option value="5">5 · Excellent</option><option value="4">4 · Good</option><option value="3">3 · Fine</option>' +
+            '<option value="2">2 · Poor</option><option value="1">1 · Very poor</option></select></div>' +
+            '<div class="field"><label for="review-note">A short note (optional)</label><textarea id="review-note" rows="2" maxlength="500"></textarea></div>' +
+            '<p class="form-error" id="review-error" hidden></p>' +
+            '<div class="form-actions"><button class="btn btn-primary btn-sm" id="review-submit" type="submit">Send review</button></div></form>' +
+            theirsText + '</div>';
+    }
+
+    function stars(n) {
+        var v = Math.max(1, Math.min(5, Number(n) || 0));
+        return '<span aria-label="' + v + ' out of 5">' + '★'.repeat(v) + '☆'.repeat(5 - v) + '</span>';
+    }
+
+    // Payment is paid directly between the two sides. Bounty holds no money and does not release any.
+    // Each side marks its own step; the visit counts as paid once both have.
+    function paymentHTML(a, owner) {
+        var p = a.payment || {};
+        if (p.confirmed) {
+            return '<div class="detail-section"><h2>Payment</h2><p class="notice success">Payment confirmed by both sides.</p></div>';
+        }
+        var mine = owner ? p.business_paid : p.provider_received;
+        var theirs = owner ? p.provider_received : p.business_paid;
+        var label = owner ? 'I have made the payment' : 'I have received the payment';
+        var action = mine
+            ? '<p class="small"><strong>You have marked this.</strong> Waiting for the other side to confirm.</p>'
+            : '<button class="btn btn-primary btn-sm" id="pay-mark" type="button">' + esc(label) + '</button>';
+        var other = theirs ? 'The other side has marked their step.' : 'The other side has not marked their step yet.';
+        return '<div class="detail-section"><h2>Payment</h2>' +
+            '<p class="small muted">Pay each other directly. Bounty does not hold or move the money. Mark each step here so both sides have a shared record.</p>' +
+            '<p class="small">' + other + '</p>' + action +
+            '<p class="form-error" id="pay-error" hidden></p></div>';
+    }
+
+    function bindPayment(q, owner) {
+        var btn = document.getElementById('pay-mark');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            K().api('/api/services/appointments/' + encodeURIComponent(q.appointment.id) + '/payment', { method: 'POST' }).then(function() {
+                K().toast(owner ? 'Payment marked as made' : 'Payment marked as received', 'success');
+                detail(q.id);
+            }).catch(function(err) {
+                btn.disabled = false;
+                setError(document.getElementById('pay-error'), err, 'Could not record the payment.');
+            });
+        });
+    }
+
+    function loadVisit(q) {
+        var a = q.appointment;
+        var slot = document.getElementById('visit-slot');
+        if (!slot || !a || a.status !== 'confirmed') return;
+        var owner = q.viewer_role === 'business';
+        Promise.all([K().api('/api/services/appointments/' + encodeURIComponent(a.id) + '/messages'),
+            K().api('/api/services/appointments/' + encodeURIComponent(a.id) + '/reviews')]).then(function(res) {
+            var codes = (res[0].messages || []).filter(function(m) { return m.kind === 'status'; }).map(function(m) { return m.status_code; });
+            var finished = codes.indexOf('finished') !== -1;
+            slot.innerHTML = progressHTML(codes) + paymentHTML(a, owner) + reviewHTML(a.id, finished, res[1]);
+            bindPayment(q, owner);
+            bindReview(q.id);
+        }).catch(function() { /* the rest of the page still works without the progress strip */ });
+    }
+
+    function bindReview(requestId) {
+        var form = document.getElementById('review-form');
+        if (!form) return;
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var error = document.getElementById('review-error');
+            var button = document.getElementById('review-submit');
+            button.disabled = true;
+            K().api('/api/services/appointments/' + encodeURIComponent(form.getAttribute('data-appointment')) + '/review', {
+                method: 'POST',
+                body: { rating: Number(document.getElementById('review-rating').value), note: document.getElementById('review-note').value }
+            }).then(function() {
+                K().toast('Thank you for the review', 'success');
+                detail(requestId);
+            }).catch(function(err) {
+                button.disabled = false;
+                setError(error, err, 'Could not send the review.');
+            });
+        });
     }
 
     function quotesBlock(q, quotes) {
@@ -498,9 +646,14 @@
         var node = document.getElementById('thread');
         if (!node) return;
         K().api('/api/services/appointments/' + encodeURIComponent(apptId) + '/messages').then(function(res) {
-            node.innerHTML = res.messages.length === 0
+            var html = res.messages.length === 0
                 ? '<p class="small muted">No messages yet.</p>'
                 : res.messages.map(threadLine).join('');
+            // Redraw only when something changed, so the list does not jump every refresh.
+            if (node.getAttribute('data-html-key') !== html) {
+                node.setAttribute('data-html-key', html);
+                node.innerHTML = html;
+            }
         }).catch(function() {});
     }
 
@@ -538,35 +691,53 @@
     // ------------------------------------------------------------------ after sign-in prompts
     // Asked once per sign-in until answered: a business names its industry, a worker says what
     // kind of work they take, where they cover, and when they are free. Both can be left for later.
+    // Setup questions open as a side drawer, not a centred dialog: the person can read the page
+    // behind it, and "Later" or Escape always closes it without saving.
+    // Dismissed prompts stay away for this browser session, so they never return on each page load.
+    function laterKey(id) { return "bounty_prompt_later:" + id; }
     function promptBox(id, title, intro, inner, onSave) {
         if (document.getElementById(id)) return;
-        var box = document.createElement('div');
+        try { if (sessionStorage.getItem(laterKey(id))) return; } catch (e) { /* storage unavailable: show it */ }
+        var box = document.createElement("aside");
         box.id = id;
-        box.setAttribute('role', 'dialog');
-        box.setAttribute('aria-modal', 'true');
-        box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:100;padding:16px';
-        box.innerHTML = '<div class="form-card form ux-modal-card"><h2 class="ux-mt0">' + esc(title) + '</h2>' +
-            '<p class="small muted">' + esc(intro) + '</p>' + inner +
-            '<p class="form-error" data-prompt-error hidden></p>' +
-            '<div class="ux-actions-end"><button class="btn" type="button" data-later>Later</button>' +
-            '<button class="btn btn-primary" type="button" data-save>Save</button></div></div>';
+        box.className = "drawer";
+        box.setAttribute("role", "dialog");
+        box.setAttribute("aria-modal", "true");
+        box.setAttribute("aria-labelledby", id + "-title");
+        box.innerHTML = "<div class=\"drawer-head\"><div><p class=\"eyebrow\" style=\"margin-bottom:4px\"><span class=\"eyebrow-dot\"></span> Set up your profile</p>" +
+            "<h2 id=\"" + id + "-title\">" + esc(title) + "</h2></div>" +
+            "<button class=\"icon-button\" type=\"button\" data-later aria-label=\"Close\">&times;</button></div>" +
+            "<div class=\"drawer-body stack-md\"><p class=\"small muted\">" + esc(intro) + "</p>" + inner +
+            "<p class=\"form-error\" data-prompt-error hidden></p></div>" +
+            "<div class=\"drawer-foot\"><button class=\"btn\" type=\"button\" data-later>Later</button>" +
+            "<button class=\"btn btn-primary\" type=\"button\" data-save>Save</button></div>";
+        // No backdrop: the page stays usable behind the drawer.
         document.body.appendChild(box);
-        function close() { if (box.parentNode) box.parentNode.removeChild(box); }
-        box.querySelector('[data-later]').addEventListener('click', close);
-        box.querySelector('[data-save]').addEventListener('click', function() {
-            var button = box.querySelector('[data-save]');
-            var error = box.querySelector('[data-prompt-error]');
+        function onKey(e) { if (e.key === "Escape") later(); }
+        function close() {
+            if (box.parentNode) box.parentNode.removeChild(box);
+            document.removeEventListener("keydown", onKey);
+        }
+        function later() {
+            try { sessionStorage.setItem(laterKey(id), "1"); } catch (e) { /* ignore */ }
+            close();
+        }
+        document.addEventListener("keydown", onKey);
+        box.querySelectorAll("[data-later]").forEach(function(btn) { btn.addEventListener("click", later); });
+        box.querySelector("[data-save]").addEventListener("click", function() {
+            var button = box.querySelector("[data-save]");
+            var error = box.querySelector("[data-prompt-error]");
             error.hidden = true;
             var problem = onSave(box);
             if (problem) { error.textContent = problem; error.hidden = false; return; }
             button.disabled = true;
             var body = box.__body;
-            K().api('/api/profile/me', { method: 'PATCH', body: body }).then(function() {
-                K().toast('Saved', 'success');
+            K().api("/api/profile/me", { method: "PATCH", body: body }).then(function() {
+                K().toast("Saved", "success");
                 close();
             }).catch(function(e) {
                 button.disabled = false;
-                error.textContent = K().friendlyApiError(e, 'Could not save.');
+                error.textContent = K().friendlyApiError(e, "Could not save.");
                 error.hidden = false;
             });
         });
@@ -616,10 +787,49 @@
             });
     }
 
+    // Setup questions do not open by themselves. A banner at the top of the page offers them, and
+    // "Later" hides it for this browser session.
+    var pendingSetup = null;
+    function setupDismissed() {
+        try { return !!sessionStorage.getItem("bounty_setup_later"); } catch (e) { return false; }
+    }
+    function placeSetupBanner() {
+        var old = document.getElementById("setup-banner");
+        if (old) old.parentNode.removeChild(old);
+        if (!pendingSetup || setupDismissed() || !K().isAuthenticated()) return;
+        var app = K().app;
+        if (!app) return;
+        var banner = document.createElement("div");
+        banner.id = "setup-banner";
+        banner.className = "notice";
+        banner.setAttribute("role", "region");
+        banner.setAttribute("aria-label", "Finish setting up your profile");
+        banner.style.cssText = "margin:16px auto 0;max-width:1120px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap";
+        var text = pendingSetup === "industry"
+            ? "Tell us what industry you run, so posting a request takes a minute."
+            : "Tell us how and when you work, so matching fits your hours.";
+        banner.innerHTML = "<span>" + esc(text) + "</span><span style=\"display:flex;gap:8px\">" +
+            "<button class=\"btn btn-sm btn-primary\" type=\"button\" data-setup-open>Set up now</button>" +
+            "<button class=\"btn btn-sm\" type=\"button\" data-setup-later>Later</button></span>";
+        app.insertBefore(banner, app.firstChild);
+        banner.querySelector("[data-setup-open]").addEventListener("click", function() {
+            var kind = pendingSetup;
+            banner.parentNode.removeChild(banner);
+            if (kind === "industry") showIndustryPrompt(); else showAvailabilityPrompt();
+        });
+        banner.querySelector("[data-setup-later]").addEventListener("click", function() {
+            try { sessionStorage.setItem("bounty_setup_later", "1"); } catch (e) { /* ignore */ }
+            placeSetupBanner();
+        });
+    }
     F.afterSignIn = function(me) {
         if (!me || !K().isAuthenticated()) return;
-        if (me.role === 'business' && !me.industry) return showIndustryPrompt();
-        if (me.role === 'worker' && (!me.work_modes || me.work_modes.length === 0)) return showAvailabilityPrompt();
+        if (me.role === "business" && !me.industry) pendingSetup = "industry";
+        else if (me.role === "worker" && (!me.work_modes || me.work_modes.length === 0)) pendingSetup = "availability";
+        else pendingSetup = null;
+        placeSetupBanner();
     };
+    // Called by the shell after each page renders, so the banner survives navigation.
+    F.afterRender = placeSetupBanner;
 
 })();

@@ -32,3 +32,211 @@
 .form-row { display: flex; align-items: center; gap: 10px; }
 .form-row input { flex: 1; }
 .h4 { font-size: 1.05rem; margin: 24px 0 8px; }
+
+
+/* ============ HOSPITALITY HERO ============
+   Terracotta and cream, the colours of a warm kitchen and a welcoming lobby.
+   Fixed on purpose: white on #A8482A is 5.8:1 and stays readable in light and dark modes. */
+
+.hosp-page {
+    --hosp-terracotta: #A8482A;
+    --hosp-cream: #F7EBDD;
+    --hosp-ink: #2A1A12;
+    --hosp-gold: #B8862B;
+    display: grid;
+    gap: 32px
+}
+
+.hosp-hero {
+    display: grid;
+    gap: 24px;
+    padding: 32px;
+    border-radius: 18px;
+    background: var(--hosp-terracotta);
+    color: #FFFFFF;
+    position: relative;
+    overflow: hidden
+}
+
+.hosp-hero::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    border: 2px solid var(--hosp-gold);
+    opacity: .5;
+    pointer-events: none
+}
+
+.hosp-eyebrow {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--hosp-cream)
+}
+
+.hosp-hero h1 {
+    margin: 0 0 12px;
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.15;
+    color: #FFFFFF
+}
+
+.hosp-lead {
+    margin: 0 0 20px;
+    max-width: 58ch;
+    color: var(--hosp-cream);
+    line-height: 1.6
+}
+
+.hosp-cta {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: #FFFFFF;
+    color: var(--hosp-terracotta);
+    font-weight: 700;
+    text-decoration: none
+}
+
+.hosp-cta:hover,
+.hosp-cta:focus-visible {
+    background: var(--hosp-cream)
+}
+
+.hosp-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    position: relative;
+    z-index: 1
+}
+
+.hosp-stat {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, .14);
+    border: 1px solid rgba(255, 255, 255, .3)
+}
+
+.hosp-stat strong {
+    display: block;
+    font-size: 28px;
+    line-height: 1.1;
+    color: #FFFFFF
+}
+
+.hosp-stat span {
+    font-size: 14px;
+    color: #FFFFFF
+}
+
+.hosp-section {
+    display: grid;
+    gap: 12px
+}
+
+@media (min-width: 760px) {
+    .hosp-hero {
+        grid-template-columns: 1.4fr 1fr;
+        align-items: end;
+        padding: 40px
+    }
+    .hosp-stats {
+        grid-template-columns: 1fr
+    }
+}
+
+
+/* ============ VISIT PROGRESS, GUEST WAITING, CHECKBOX ROWS ============ */
+
+.check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-weight: 500;
+    cursor: pointer
+}
+
+.check-row input {
+    margin-top: 4px;
+    width: 18px;
+    height: 18px;
+    flex: none
+}
+
+.visit-progress {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px
+}
+
+.visit-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted)
+}
+
+.visit-step.done {
+    color: var(--text);
+    font-weight: 600
+}
+
+.visit-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--muted);
+    flex: none
+}
+
+.visit-step.done .visit-dot {
+    background: var(--hosp-terracotta, #A8482A);
+    border-color: var(--hosp-terracotta, #A8482A)
+}
+
+.visit-step[aria-current="step"] {
+    text-decoration: underline;
+    text-underline-offset: 4px
+}
+
+.notice.success {
+    border-color: var(--success-border, #9bd1ae);
+    background: var(--success-bg, #e8f6ee)
+}
+
+/* Service discovery: photographic index strips (features/discovery.js). */
+.discover-list { display: grid; gap: 12px; margin-top: 24px; }
+.discover-strip {
+  display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 16px;
+  padding: 12px 16px 12px 12px; border: 1px solid var(--line, #e3e6ea); border-radius: 12px;
+  background: var(--ink-surface); color: var(--text-primary); text-decoration: none;
+  transition: border-color var(--dur, 180ms) var(--ease-out, ease-out);
+}
+.discover-strip:hover, .discover-strip:focus-visible { border-color: var(--signal); }
+.discover-strip:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.discover-photo {
+  position: relative; display: block; width: 112px; height: 84px; border-radius: 8px; overflow: hidden;
+  background: var(--ink-elevated);
+}
+.discover-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.discover-body { display: grid; gap: 4px; min-width: 0; }
+.discover-title { font-family: var(--font-display, inherit); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.discover-meta { font-size: 14px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.discover-go { font-size: 14px; font-weight: 500; color: var(--signal); white-space: nowrap; }
+@media (max-width: 560px) {
+  .discover-strip { grid-template-columns: 72px minmax(0, 1fr); }
+  .discover-photo { width: 72px; height: 72px; }
+  .discover-go { grid-column: 2; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) { .discover-strip { transition: none; } }

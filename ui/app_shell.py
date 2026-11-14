@@ -16,6 +16,7 @@ class AppShell(Shell):
             NavSection(
                 "Work",
                 NavItem("Services", biz_url("/services"), icon="tool"),
+                NavItem("Post a bounty", biz_url("/post-bounty"), icon="plus"),
             ),
             fixed=NavFixed(NavItem("Home", biz_url("/"), icon="home")),
             top_nav=Text(store.page_title, weight="semibold"),

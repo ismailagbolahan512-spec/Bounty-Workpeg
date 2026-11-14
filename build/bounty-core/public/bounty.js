@@ -468,56 +468,103 @@
             .catch(function() {});
     }
 
+    // Two-step drawer: step 1 picks work categories, step 2 reviews them and saves skills.
+    // Skipping (or the close button) still marks onboarding done, so it never returns unasked.
     function showOnboarding(me) {
-        if (document.getElementById('onboarding-modal')) return;
-        var box = document.createElement('div');
-        box.id = 'onboarding-modal';
-        box.setAttribute('role', 'dialog');
-        box.setAttribute('aria-modal', 'true');
-        box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:100;padding:16px';
-        box.innerHTML = '<div class="form-card form ux-modal-card">' +
-            '<h2 class="ux-mt0">What kind of work do you do?</h2>' +
-            '<p class="small muted">This helps businesses find you. You can skip this and change it later on your profile.</p>' +
-            '<div class="field"><span class="field-label">Pick any that apply</span>' + categoryCheckboxes(me.categories || []) + '</div>' +
-            '<div class="field"><label for="ob-skills">What are you good at? (optional)</label>' +
-            '<input id="ob-skills" maxlength="300" placeholder="e.g. HTML, copywriting, video editing" value="' + escapeHTML(me.skills || '') + '"></div>' +
-            '<div class="ux-actions-end">' +
-            '<button class="btn" type="button" id="ob-skip">Skip for now</button>' +
-            '<button class="btn btn-primary" type="button" id="ob-save">Save</button></div></div>';
-        document.body.appendChild(box);
+        if (document.getElementById('onboarding-drawer')) return;
+        var back = document.createElement('div');
+        back.id = 'onboarding-backdrop';
+        back.className = 'drawer-backdrop';
+        var drawer = document.createElement('aside');
+        drawer.id = 'onboarding-drawer';
+        drawer.className = 'drawer';
+        drawer.setAttribute('role', 'dialog');
+        drawer.setAttribute('aria-modal', 'true');
+        drawer.setAttribute('aria-labelledby', 'ob-title');
+        document.body.appendChild(back);
+        document.body.appendChild(drawer);
+        document.body.style.overflow = 'hidden';
 
-        function close() {
-            if (box.parentNode) box.parentNode.removeChild(box);
+        var step = 1;
+        var chosen = (me.categories || []).slice();
+        var skills = me.skills || '';
+
+        function finish(saveAnswers) {
+            if (back.parentNode) back.parentNode.removeChild(back);
+            if (drawer.parentNode) drawer.parentNode.removeChild(drawer);
+            document.body.style.overflow = '';
             // The availability question follows the profile questions.
             if (window.BountyFeatures && window.BountyFeatures.afterSignIn) window.BountyFeatures.afterSignIn(state.profile || me);
+            return saveAnswers;
         }
 
-        on($('#ob-skip', box), 'click', function() {
-            api('/api/profile/me', { method: 'PATCH', body: { onboarding_done: true } }).catch(function() {});
-            close();
-        });
+        function captureStep() {
+            if (step === 1) chosen = checkedCategories(drawer);
+            var field = $('#ob-skills', drawer);
+            if (field) skills = field.value.trim();
+        }
 
-        on($('#ob-save', box), 'click', function() {
-            var saveButton = $('#ob-save', box);
-            saveButton.disabled = true;
-            api('/api/profile/me', {
-                    method: 'PATCH',
-                    body: {
-                        categories: checkedCategories(box),
-                        skills: $('#ob-skills', box).value.trim(),
-                        onboarding_done: true
-                    }
-                })
-                .then(function(saved) {
-                    state.profile = saved;
-                    close();
-                    toast('Thanks. Your profile is updated.', 'success');
-                })
-                .catch(function(error) {
-                    saveButton.disabled = false;
-                    toast(friendlyApiError(error, 'Could not save your answers.'), 'error');
-                });
-        });
+        function paint() {
+            var title = step === 1 ? 'What kind of work do you do?' : 'Check and finish';
+            var body;
+            if (step === 1) {
+                body = '<p class="small muted">This helps businesses find you. You can change it later on your profile.</p>' +
+                    '<div class="field"><span class="field-label">Pick any that apply</span>' + categoryCheckboxes(chosen) + '</div>';
+            } else {
+                var names = chosen.length
+                    ? chosen.map(categoryLabel).join(', ')
+                    : 'None yet. You can add them later.';
+                body = '<p class="small muted">Saving marks setup complete. Nothing is shared beyond your profile.</p>' +
+                    '<dl class="detail-def"><div class="detail-def-row"><dt>Work categories</dt><dd>' + escapeHTML(names) + '</dd></div></dl>' +
+                    '<div class="field"><label for="ob-skills">What are you good at? (optional)</label>' +
+                    '<input id="ob-skills" maxlength="300" placeholder="e.g. HTML, copywriting, video editing" value="' + escapeHTML(skills) + '"></div>';
+            }
+            var foot = step === 1
+                ? '<button class="btn" type="button" id="ob-skip">Skip for now</button><button class="btn btn-primary" type="button" id="ob-next">Next</button>'
+                : '<button class="btn" type="button" id="ob-back">Back</button><button class="btn btn-primary" type="button" id="ob-save">Save and finish</button>';
+            drawer.innerHTML =
+                '<div class="drawer-head"><div>' +
+                  '<p class="eyebrow" style="margin-bottom:4px"><span class="eyebrow-dot"></span> Set up your profile · step ' + step + ' of 2</p>' +
+                  '<h2 id="ob-title">' + escapeHTML(title) + '</h2></div>' +
+                  '<button class="icon-button" id="ob-close" type="button" aria-label="Skip setup">' + icon('close', 18) + '</button></div>' +
+                '<div class="drawer-body stack-md">' + body + '</div>' +
+                '<div class="drawer-foot">' + foot + '</div>';
+            wire();
+            var first = drawer.querySelector('input, button.btn-primary');
+            if (first) first.focus();
+        }
+
+        function skipSetup() {
+            api('/api/profile/me', { method: 'PATCH', body: { onboarding_done: true } }).catch(function() {});
+            finish(false);
+        }
+
+        function wire() {
+            on($('#ob-close', drawer), 'click', skipSetup);
+            on($('#ob-skip', drawer), 'click', skipSetup);
+            on($('#ob-next', drawer), 'click', function() { captureStep(); step = 2; paint(); });
+            on($('#ob-back', drawer), 'click', function() { captureStep(); step = 1; paint(); });
+            on($('#ob-save', drawer), 'click', function() {
+                captureStep();
+                var saveButton = $('#ob-save', drawer);
+                saveButton.disabled = true;
+                api('/api/profile/me', {
+                        method: 'PATCH',
+                        body: { categories: chosen, skills: skills, onboarding_done: true }
+                    })
+                    .then(function(saved) {
+                        state.profile = saved;
+                        finish(true);
+                        toast('Thanks. Your profile is updated.', 'success');
+                    })
+                    .catch(function(error) {
+                        saveButton.disabled = false;
+                        toast(friendlyApiError(error, 'Could not save your answers.'), 'error');
+                    });
+            });
+        }
+
+        paint();
     }
 
     function addMineToggle() {
@@ -663,7 +710,11 @@
                 '<div class="field"><span class="field-label">Kinds of work you do</span>' + categoryCheckboxes([]) + '</div>' +
                 '<div class="field"><label for="profile-skills">What you are good at (optional)</label><input id="profile-skills" maxlength="300" placeholder="e.g. HTML, copywriting, video editing"></div>' : '') +
             '<button class="btn btn-primary" id="profile-save" type="submit">Save profile ' + icon('arrow', 16) + '</button></form></div>' +
-            (worker ? '<div class="form-layout" id="portfolio-card"></div><div class="form-layout" data-availability-slot></div>' : '') + '</div></section>';
+            (worker ? '<div class="form-layout" id="portfolio-card"></div><div class="form-layout" data-availability-slot></div>' : '') +
+            (business ? '<div class="form-layout"><section class="form-card form" aria-labelledby="workpeg-settings-title"><h2 id="workpeg-settings-title" class="h4">Workpeg</h2>' +
+              '<p class="muted">Connect Bounty to Workpeg, approve what it may do, and revoke access at any time. Only business accounts can connect.</p>' +
+              '<div><a class="btn btn-sm btn-primary" href="#/connections/workpeg">Open Workpeg settings</a></div></section></div>' : '') +
+            '</div></section>';
 
         api('/api/profile/me')
             .then(function(me) {
@@ -750,9 +801,9 @@
                     (c.location ? '<p class="small muted ux-mt4">' + escapeHTML(c.location) + '</p>' : '') + '</div></div>' +
                     '<section class="detail-section"><h2>About</h2><div class="detail-description">' + escapeHTML(c.bio || 'This company has not added a description yet.') + '</div></section>' +
                     (site ? '<section class="detail-section"><h2>Website</h2><p><a class="inline-link" href="' + site + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(c.website) + '</a></p></section>' : '') +
-                    '</article><aside class="panel detail-sidebar"><h3>Activity</h3><dl class="definition-list">' +
+                    '</article><div class="panel detail-sidebar"><h2>Activity</h2><dl class="definition-list">' +
                     '<div><dt>Bounties posted</dt><dd>' + escapeHTML(c.bounties_posted) + '</dd></div>' +
-                    '<div><dt>Completed</dt><dd>' + escapeHTML(c.bounties_completed) + '</dd></div></dl></aside></div></div></section>';
+                    '<div><dt>Completed</dt><dd>' + escapeHTML(c.bounties_completed) + '</dd></div></dl></div></div></section>';
             })
             .catch(function(error) {
                 app.innerHTML = '<section class="page"><div class="container"><a class="back-link" href="#/bounties">' + icon('arrowLeft', 16) + ' Back to bounties</a><div class="empty-state"><span class="empty-illustration">' + icon('alert', 28) + '</span><h3>Company not found</h3><p>' + escapeHTML(friendlyApiError(error, 'This company profile could not be loaded.')) + '</p><a class="btn btn-primary" href="#/bounties">Back to marketplace</a></div></div></section>';
@@ -775,16 +826,51 @@
 
     function authPage(mode) {
         var signup = mode === 'signup';
+        var heading = signup ? 'Join Bounty.' : 'Welcome back.';
+        var sub = signup
+            ? 'Create an account. Browse tasks, prove your ability, and get the work seen by people who need it.'
+            : 'Log in to pick up where you left off.';
         app.innerHTML =
-            '<section class="container auth-shell"><div class="auth-intro"><span class="eyebrow">' + icon('sparkles', 15) + ' Welcome to Bounty</span><h1>' + (signup ? 'Join Bounty.' : 'Welcome back.') + '</h1><p>' + (signup ? 'Create an account to browse tasks, submit work, and track your progress.' : 'Log in to see your bounties, submissions, and messages.') + '</p><div class="auth-benefits"><div class="auth-benefit"><span class="checkmark">✓</span><span>Opportunities across multiple skill categories</span></div><div class="auth-benefit"><span class="checkmark">✓</span><span>Clear task details, requirements, and deadlines</span></div><div class="auth-benefit"><span class="checkmark">✓</span><span>A simple place to track your work</span></div></div></div>' +
-            '<section class="auth-card" aria-labelledby="auth-title"><h2 id="auth-title">' + (signup ? 'Create your account' : 'Log in') + '</h2><p class="intro">' + (signup ? 'It takes a minute to get started.' : 'Enter your account details below.') + '</p><form id="auth-form" class="form" novalidate><div id="auth-error" class="form-error" hidden role="alert"></div>' +
-            (signup ? '<div class="field"><label for="auth-name">Full name</label><input id="auth-name" name="name" autocomplete="name" placeholder="e.g. Ismaila Jabar" required maxlength="100"></div>' : '') +
-            '<div class="field"><label for="auth-email">Email address</label><input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required maxlength="254"></div>' +
-            '<div class="field"><label for="auth-password">Password</label><div class="pw-wrap"><input id="auth-password" name="password" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '" placeholder="' + (signup ? 'At least 8 characters' : 'Your password') + '" required minlength="' + (signup ? '8' : '1') + '" maxlength="128"><button class="pw-toggle" type="button" id="pw-toggle" aria-pressed="false" aria-label="Show password">Show</button></div></div>' +
-            (signup ? '<div class="field"><span class="field-label">I want to join as</span><div class="role-choice"><div class="role-option"><input id="role-worker" name="role" type="radio" value="worker" checked><label for="role-worker"><strong>Worker</strong><span>Find tasks and submit work</span></label></div><div class="role-option"><input id="role-business" name="role" type="radio" value="business"><label for="role-business"><strong>Business</strong><span>Post and review tasks</span></label></div></div></div>' : '') +
-            '<button class="btn btn-primary btn-block" type="submit" id="auth-submit">' + (signup ? 'Create account' : 'Log in') + ' ' + icon('arrow', 16) + '</button></form>' +
-            (signup ? '' : '<p class="auth-switch"><a class="inline-link" href="#/auth/forgot">Forgot password?</a></p>') +
-            '<p class="auth-switch">' + (signup ? 'Already have an account? <a class="inline-link" href="#/auth/login">Log in</a>' : 'New to Bounty? <a class="inline-link" href="#/auth/signup">Create an account</a>') + '</p><p class="auth-switch"><a class="inline-link" href="#/">← Back to homepage</a></p></section></section>';
+            '<section class="auth-shell">' +
+              '<div class="auth-brand-pane">' +
+                '<div class="auth-brand-content">' +
+                  '<a class="auth-brand-mark" href="#/"><span class="brand-mark">B</span><span>Bounty</span></a>' +
+                  '<div class="stack-md">' +
+                    '<h1 class="auth-headline">' + escapeHTML(heading) + '</h1>' +
+                    '<p class="auth-sub">' + escapeHTML(sub) + '</p>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="auth-marks">' +
+                  '<div class="auth-mark-row"><span class="auth-mark-icon">' + icon('file', 16) + '</span><div><strong>Clear tasks, clear outcomes.</strong>Every bounty states its scope, requirements and acceptance criteria upfront.</div></div>' +
+                  '<div class="auth-mark-row"><span class="auth-mark-icon">' + icon('shield', 16) + '</span><div><strong>Reputation from work done.</strong>Approved submissions build a per-industry record you can show.</div></div>' +
+                  '<div class="auth-mark-row"><span class="auth-mark-icon">' + icon('globe', 16) + '</span><div><strong>Opportunity without a gate.</strong>Who you know and where you are matter less than what you can do.</div></div>' +
+                '</div>' +
+              '</div>' +
+              '<section class="auth-form-pane"><div class="auth-form-card">' +
+                '<h2>' + (signup ? 'Create your account' : 'Log in') + '</h2>' +
+                '<p class="lead">' + (signup ? 'One minute. No email verification step.' : 'Enter your account details below.') + '</p>' +
+                '<form id="auth-form" class="form" novalidate>' +
+                  '<div id="auth-error" class="form-error" hidden role="alert"></div>' +
+                  (signup ? '<div class="field"><label for="auth-name">Full name</label><input id="auth-name" name="name" autocomplete="name" placeholder="e.g. Ismaila Jabar" required maxlength="100"></div>' : '') +
+                  '<div class="field"><label for="auth-email">Email address</label><input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required maxlength="254"></div>' +
+                  '<div class="field"><label for="auth-password">Password</label>' +
+                    '<div class="pw-wrap"><input id="auth-password" name="password" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '" placeholder="' + (signup ? 'At least 8 characters' : 'Your password') + '" required minlength="' + (signup ? '8' : '1') + '" maxlength="128">' +
+                    '<button class="pw-toggle" type="button" id="pw-toggle" aria-pressed="false" aria-label="Show password">Show</button></div>' +
+                    (signup ? '<div class="pw-strength-wrap"><div class="progress pw-strength"><div class="progress-bar progress-strength-0" id="pw-strength-bar"></div></div><small id="pw-strength-label">—</small></div>' : '') +
+                  '</div>' +
+                  (signup ? '<div class="field"><span class="field-label" style="margin-bottom:8px">I want to join as</span>' +
+                    '<div class="role-cards">' +
+                      '<label class="role-card"><input type="radio" name="role" value="worker" checked><span class="role-card-body"><strong>Worker</strong><span>Find tasks, prove your ability, get paid for approved work.</span></span></label>' +
+                      '<label class="role-card"><input type="radio" name="role" value="business"><span class="role-card-body"><strong>Business</strong><span>Post tasks, review submissions, hire proven workers.</span></span></label>' +
+                    '</div></div>' : '') +
+                  '<div class="form-actions" style="margin-top:' + (signup ? '24px' : '20px') + '">' +
+                    '<button class="btn btn-primary btn-block" type="submit" id="auth-submit">' + (signup ? 'Create account' : 'Log in') + '</button>' +
+                  '</div>' +
+                '</form>' +
+                (signup ? '' : '<p class="auth-switch"><a class="inline-link" href="#/auth/forgot">Forgot password?</a></p>') +
+                '<p class="auth-switch">' + (signup ? 'Already have an account? <a class="inline-link" href="#/auth/login">Log in</a>' : 'New to Bounty? <a class="inline-link" href="#/auth/signup">Create an account</a>') + '</p>' +
+              '</div></section>' +
+            '</section>';
         on($('#auth-form'), 'submit', function(event) { submitAuth(event, signup); });
         on($('#pw-toggle'), 'click', function(event) {
             var input = $('#auth-password');
@@ -797,6 +883,22 @@
         on($('#auth-form'), 'input', function(event) {
             if (event.target.getAttribute) event.target.setAttribute('aria-invalid', 'false');
         });
+        if (signup) on($('#auth-password'), 'input', function(e) { updatePwStrength(e.target.value); });
+    }
+
+    // Lightweight password strength estimate — length tiers, plus variety for the next step.
+    function updatePwStrength(pw) {
+        var bar = $('#pw-strength-bar');
+        var label = $('#pw-strength-label');
+        if (!bar || !label) return;
+        var score = 0;
+        if (pw.length >= 8) score++;
+        if (pw.length >= 12) score++;
+        if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+        if (/[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+        bar.className = 'progress-bar progress-strength-' + score;
+        var labels = ['—', 'Weak', 'Okay', 'Good', 'Strong'];
+        label.textContent = pw.length === 0 ? '—' : labels[score];
     }
 
     // Marks one field as invalid and moves focus to it, so the error is tied to the input.
@@ -873,7 +975,7 @@
 
     function friendlyApiError(error, fallback) {
         if (error instanceof TypeError && /fetch/i.test(error.message)) {
-            return 'Could not reach the Bounty backend. Make sure the server is running and this page is opened from http://localhost:3000.';
+            return 'Could not reach the Bounty server. Check your connection and try again. If the site has been idle, the server can take a minute to start.';
         }
         return (error && error.message) || fallback;
     }
@@ -884,47 +986,111 @@
 
     /* ============ MARKETPLACE ============ */
 
-    function bountyCard(b) {
+    // A single bounty on the list — one big rich horizontal row rather than a grid card.
+    function bountyRow(b) {
         var id = b.id || b.bounty_id;
         var title = b.title || 'Untitled bounty';
         var status = b.status || 'open';
-        return '<article class="bounty-card">' +
-            '<div class="card-topline"><span class="category-label">' + escapeHTML(categoryLabel(b.category)) + '</span>' +
-            '<span class="status-pill ' + statusClass(status) + '">' + escapeHTML(titleCase(status)) + '</span></div>' +
-            '<h2><a href="#/bounties/' + encodeURIComponent(id) + '">' + escapeHTML(title) + '</a></h2>' +
-            '<p class="description">' + escapeHTML(b.description || 'No description provided yet.') + '</p>' +
-            '<div class="card-tags"><span class="tag diff-' + difficultyClass(b.difficulty) + '">' + escapeHTML(titleCase(b.difficulty || 'medium')) + '</span>' +
-            '<span class="tag">' + escapeHTML(titleCase(b.submission_type || 'submission')) + '</span>' +
-            '<span class="tag">' + escapeHTML(workerSlotsText(b)) + '</span></div>' +
-            '<div class="card-bottom"><div><span class="reward-label">Reward</span><div class="reward-value">' + escapeHTML(money(b.reward_amount, b.currency || 'NGN')) + '</div></div>' +
-            '<div class="card-side"><span class="card-deadline">Due ' + escapeHTML(dateText(b.deadline)) + '</span>' +
-            '<a class="inline-link small" href="#/bounties/' + encodeURIComponent(id) + '">View details</a></div></div>' +
-            '</article>';
+        var desc = String(b.description || 'No description yet.').replace(/\s+/g, ' ').trim();
+        var deadlineBit = b.deadline ? daysLeft(b.deadline) : 'No deadline';
+        return '<a class="bounty-row" href="#/bounties/' + encodeURIComponent(id) + '">' +
+            '<div class="bounty-row-main">' +
+              '<div class="bounty-row-top">' +
+                '<span class="badge badge-signal">' + escapeHTML(categoryLabel(b.category)) + '</span>' +
+                '<span class="status-pill status-' + statusClass(status) + '">' + escapeHTML(titleCase(status)) + '</span>' +
+                (b.difficulty ? '<span class="tag">' + escapeHTML(titleCase(b.difficulty)) + '</span>' : '') +
+              '</div>' +
+              '<h2 class="bounty-row-title">' + escapeHTML(title) + '</h2>' +
+              '<p class="bounty-row-desc">' + escapeHTML(desc) + '</p>' +
+              '<div class="bounty-row-meta">' +
+                '<span>' + icon('clock', 13) + ' ' + escapeHTML(deadlineBit) + '</span>' +
+                '<span>' + icon('file', 13) + ' ' + escapeHTML(titleCase(b.submission_type || 'submission')) + '</span>' +
+                '<span>' + escapeHTML(workerSlotsText(b)) + '</span>' +
+              '</div>' +
+            '</div>' +
+            '<div class="bounty-row-reward">' +
+              '<span class="bounty-row-reward-amount num">' + escapeHTML(formatNumber(b.reward_amount)) + '</span>' +
+              '<span class="bounty-row-reward-currency">' + escapeHTML(b.currency || 'NGN') + '</span>' +
+            '</div>' +
+          '</a>';
+    }
+
+    // Kept as an alias so existing callers (dashboard) that use bountyCard() still work.
+    function bountyCard(b) { return bountyRow(b); }
+
+    function formatNumber(value) {
+        var n = Number(value);
+        if (!isFinite(n)) return String(value || '');
+        return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
     }
 
     function browsePage() {
         if (!protectedPage('bounties')) return;
         var isBusiness = getRole() === 'business';
+        var isWorker = getRole() === 'worker';
         var categories = [
-            ['all', 'All categories'],
+            ['all', 'All'],
             ['dev', 'Development'],
             ['design', 'Design'],
             ['content', 'Content'],
             ['marketing', 'Marketing'],
             ['other', 'Other']
         ];
-        var chips = categories.map(function(c) {
-            return '<button class="filter-chip" type="button" data-category="' + c[0] + '" aria-pressed="' + (state.category === c[0]) + '">' + c[1] + '</button>';
+        var difficulties = [
+            ['all', 'Any level'],
+            ['easy', 'Easy'],
+            ['medium', 'Medium'],
+            ['hard', 'Hard']
+        ];
+
+        var categoryItems = categories.map(function(c) {
+            return '<button class="filter-rail-item" type="button" data-category="' + c[0] + '" aria-pressed="' + (state.category === c[0]) + '">' +
+                '<span>' + escapeHTML(c[1]) + '</span></button>';
+        }).join('');
+        var difficultyItems = difficulties.map(function(d) {
+            return '<button class="filter-rail-item" type="button" data-difficulty="' + d[0] + '" aria-pressed="' + (state.difficulty === d[0]) + '">' +
+                '<span>' + escapeHTML(d[1]) + '</span></button>';
         }).join('');
 
+        var tabsHTML = isWorker ?
+            '<div class="tabs" role="tablist">' +
+              '<button class="tab" role="tab" aria-selected="' + (state.mineOnly ? 'true' : 'false') + '" data-tab="mine">For you</button>' +
+              '<button class="tab" role="tab" aria-selected="' + (state.mineOnly ? 'false' : 'true') + '" data-tab="all">All opportunities</button>' +
+            '</div>' : '';
+
         app.innerHTML =
-            '<section class="page"><div class="container"><div class="market-top"><div><span class="eyebrow">' + icon('globe', 15) + ' The opportunity marketplace</span><h1>Explore bounties</h1><p>Find a task that matches your skills. Review the details and requirements before you commit.</p></div>' +
-            (isBusiness ? '<a class="btn btn-primary" href="#/bounties/new">' + icon('plus', 17) + ' Create a bounty</a>' : '') + '</div>' +
-            '<div class="market-tools"><div class="search-wrap">' + icon('search', 19) + '<label class="sr-only" for="bounty-search">Search bounties</label><input class="control" id="bounty-search" type="search" placeholder="Search by title or keyword…" value="' + escapeHTML(state.search) + '"></div>' +
-            '<div class="field"><label class="sr-only" for="bounty-sort">Sort bounties</label><select id="bounty-sort" class="control"><option value="newest" ' + (state.sort === 'newest' ? 'selected' : '') + '>Newest first</option><option value="reward-high" ' + (state.sort === 'reward-high' ? 'selected' : '') + '>Highest reward</option><option value="deadline" ' + (state.sort === 'deadline' ? 'selected' : '') + '>Deadline soon</option></select></div></div>' +
-            '<div class="filter-row" aria-label="Filter by category">' + chips + '<span class="ux-flex1"></span><label class="small muted" for="difficulty-filter">Difficulty</label><select id="difficulty-filter" class="control ux-btn-compact"><option value="all">Any level</option><option value="easy" ' + (state.difficulty === 'easy' ? 'selected' : '') + '>Easy</option><option value="medium" ' + (state.difficulty === 'medium' ? 'selected' : '') + '>Medium</option><option value="hard" ' + (state.difficulty === 'hard' ? 'selected' : '') + '>Hard</option></select></div>' +
-            '<div class="results-line"><span id="results-count">Loading opportunities…</span><span>Page <strong id="page-number">' + state.bountyPage + '</strong></span></div>' +
-            '<div id="bounty-results" class="bounty-grid" aria-live="polite"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div><div id="bounty-pagination" class="pagination"></div></div></section>';
+            '<section class="page"><div class="container">' +
+              '<div class="page-head">' +
+                '<div>' +
+                  '<p class="eyebrow"><span class="eyebrow-dot"></span> Marketplace</p>' +
+                  '<h1>Find work worth proving.</h1>' +
+                  '<p class="muted">Each task states what it needs, what success looks like, and when it is due. Filter on the left; submissions are reviewed against the stated criteria.</p>' +
+                '</div>' +
+                (isBusiness ? '<div><a class="btn btn-primary" href="#/bounties/new">' + icon('plus', 16) + ' Create a bounty</a></div>' : '') +
+              '</div>' +
+              tabsHTML +
+              '<div class="marketplace-layout">' +
+                '<div class="filter-rail" role="region" aria-label="Filter bounties">' +
+                  '<div class="filter-rail-group"><span class="filter-rail-group-label">Category</span>' + categoryItems + '</div>' +
+                  '<div class="filter-rail-group"><span class="filter-rail-group-label">Difficulty</span>' + difficultyItems + '</div>' +
+                '</div>' +
+                '<div>' +
+                  '<div class="search-toolbar">' +
+                    '<div class="search-wrap">' + icon('search', 17) + '<input id="bounty-search" type="search" placeholder="Search by title or keyword…" value="' + escapeHTML(state.search) + '" aria-label="Search bounties"></div>' +
+                    '<select id="bounty-sort" aria-label="Sort" style="width:auto;min-width:160px">' +
+                      '<option value="newest"' + (state.sort === 'newest' ? ' selected' : '') + '>Newest first</option>' +
+                      '<option value="reward-high"' + (state.sort === 'reward-high' ? ' selected' : '') + '>Highest reward</option>' +
+                      '<option value="deadline"' + (state.sort === 'deadline' ? ' selected' : '') + '>Deadline soon</option>' +
+                    '</select>' +
+                  '</div>' +
+                  '<div class="results-line"><span id="results-count">Loading…</span><span>Page <strong id="page-number" class="num">' + state.bountyPage + '</strong></span></div>' +
+                  '<div id="bounty-results" class="bounty-list" aria-live="polite">' +
+                    '<div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>' +
+                  '</div>' +
+                  '<div id="bounty-pagination" class="form-actions" style="justify-content:center;margin-top:24px"></div>' +
+                '</div>' +
+              '</div>' +
+            '</div></section>';
 
         on($('#bounty-search'), 'input', debounce(function(event) {
             state.search = event.target.value;
@@ -935,11 +1101,6 @@
             state.sort = event.target.value;
             fetchBounties();
         });
-        on($('#difficulty-filter'), 'change', function(event) {
-            state.difficulty = event.target.value;
-            state.bountyPage = 1;
-            fetchBounties();
-        });
         $$('[data-category]').forEach(function(button) {
             button.addEventListener('click', function() {
                 state.category = button.getAttribute('data-category');
@@ -948,7 +1109,23 @@
                 fetchBounties();
             });
         });
-        addMineToggle();
+        $$('[data-difficulty]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                state.difficulty = button.getAttribute('data-difficulty');
+                state.bountyPage = 1;
+                $$('[data-difficulty]').forEach(function(b) { b.setAttribute('aria-pressed', String(b === button)); });
+                fetchBounties();
+            });
+        });
+        $$('[data-tab]').forEach(function(t) {
+            t.addEventListener('click', function() {
+                var mode = t.getAttribute('data-tab');
+                state.mineOnly = (mode === 'mine');
+                state.bountyPage = 1;
+                $$('[data-tab]').forEach(function(x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+                fetchBounties();
+            });
+        });
         fetchBounties();
     }
 
@@ -964,7 +1141,7 @@
     function fetchBounties() {
         var result = $('#bounty-results');
         if (!result) return;
-        result.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+        result.innerHTML = '<div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>';
 
         var params = new URLSearchParams({ page: String(state.bountyPage), limit: String(state.bountyLimit) });
         if (state.category !== 'all') params.set('category', state.category);
@@ -1008,18 +1185,19 @@
                 $('#page-number').textContent = state.bountyPage;
 
                 if (!bounties.length) {
-                    var filtered = state.search || state.category !== 'all' || state.difficulty !== 'all';
-                    result.innerHTML = '<div class="empty-state"><span class="empty-illustration">' + icon('search', 28) + '</span><h3>No matching bounties yet</h3><p>' + (filtered ? 'Try another search or remove a filter.' : 'There are no open bounties yet. Once a business publishes one, it will appear here.') + '</p><button class="btn" id="clear-filters" type="button">Clear filters</button></div>';
+                    var filtered = state.search || state.category !== 'all' || state.difficulty !== 'all' || state.mineOnly;
+                    result.innerHTML = '<div class="empty-state"><span class="empty-illustration">' + icon('search', 24) + '</span><h3>' + (filtered ? 'Nothing matches those filters' : 'No open bounties yet') + '</h3><p>' + (filtered ? 'Try a wider search, drop a filter or switch to “All opportunities”.' : 'When a business publishes a task, it will appear here. Check back soon.') + '</p>' + (filtered ? '<button class="btn" id="clear-filters" type="button">Clear filters</button>' : '') + '</div>';
                 } else {
-                    result.innerHTML = bounties.map(bountyCard).join('');
+                    result.innerHTML = bounties.map(bountyRow).join('');
                 }
 
                 on($('#clear-filters'), 'click', function() {
                     state.search = '';
                     state.category = 'all';
                     state.difficulty = 'all';
+                    state.mineOnly = false;
                     state.bountyPage = 1;
-                    fetchBounties();
+                    browsePage();  // full re-render so the chips, tabs and search field reset too
                 });
 
                 var pager = $('#bounty-pagination');
@@ -1053,22 +1231,99 @@
         wrap.style.marginTop = '12px';
         wrap.innerHTML = '<button class="btn btn-block" id="close-bounty-btn" type="button">Close bounty</button>';
         sidebar.appendChild(wrap);
-        on($('#close-bounty-btn'), 'click', function() {
-            if (!window.confirm('Close this bounty? It will be hidden from the marketplace.')) return;
-            api('/api/bounties/' + encodeURIComponent(bounty.id) + '/close', { method: 'PATCH' })
-                .then(function() {
-                    toast('Bounty closed.', 'success');
-                    bountyDetailPage(bounty.id);
-                })
-                .catch(function(error) {
-                    toast(friendlyApiError(error, 'Could not close this bounty.'), 'error');
-                });
+        on($('#close-bounty-btn'), 'click', function(event) {
+            inlineConfirm(event.currentTarget, 'Close this bounty? It will be hidden from the marketplace.', 'Close bounty', function() {
+                api('/api/bounties/' + encodeURIComponent(bounty.id) + '/close', { method: 'PATCH' })
+                    .then(function() {
+                        toast('Bounty closed.', 'success');
+                        bountyDetailPage(bounty.id);
+                    })
+                    .catch(function(error) {
+                        toast(friendlyApiError(error, 'Could not close this bounty.'), 'error');
+                    });
+            });
         });
+    }
+
+    // Submission as a right-side drawer. Keeps the worker on the detail page, shows criteria next
+    // to the form, and persists in-progress text in sessionStorage so an accidental close doesn't
+    // nuke what was typed.
+    function submissionDrawerHTML(bounty) {
+        var linkRequired = bounty.submission_type !== 'text';
+        var draftKey = 'bounty_submit_draft_' + bounty.id;
+        var saved = {};
+        try { saved = JSON.parse(sessionStorage.getItem(draftKey) || '{}'); } catch (e) { saved = {}; }
+        var criteriaBlock = bounty.acceptance_criteria && bounty.acceptance_criteria.length
+            ? '<div class="field"><label>Acceptance criteria (for your reference)</label>' + criteriaListHTML(bounty.acceptance_criteria) + '</div>'
+            : '';
+        return '<div id="submission-drawer-backdrop" class="drawer-backdrop" hidden></div>' +
+          '<aside id="submission-drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="sd-title" hidden>' +
+            '<div class="drawer-head">' +
+              '<div><p class="eyebrow" style="margin-bottom:4px"><span class="eyebrow-dot"></span> Submit your work</p>' +
+              '<h2 id="sd-title">' + escapeHTML((bounty.title || 'Submission').slice(0, 60)) + '</h2></div>' +
+              '<button class="icon-button" id="submission-drawer-close" type="button" aria-label="Close">' + icon('close', 18) + '</button>' +
+            '</div>' +
+            '<form id="submission-form" class="drawer-body form" novalidate>' +
+              '<div id="submission-error" class="form-error" hidden role="alert"></div>' +
+              criteriaBlock +
+              '<div class="field"><label for="submission-title">Submission title</label><input id="submission-title" name="title" required minlength="3" maxlength="200" placeholder="A one-line summary of your submission" value="' + escapeHTML(saved.title || '') + '"></div>' +
+              '<div class="field"><label for="submission-description">How your work meets the requirements</label><textarea id="submission-description" name="description" required minlength="30" maxlength="2000" rows="5" placeholder="Explain what you built and how it meets each criterion.">' + escapeHTML(saved.description || '') + '</textarea><span class="field-hint">30 to 2000 characters.</span></div>' +
+              '<div class="field"><label for="submission-link">' + (linkRequired ? 'Link to your work' : 'Link (optional)') + '</label><input id="submission-link" name="github_link" type="url" maxlength="255" ' + (linkRequired ? 'required' : '') + ' placeholder="https://github.com/you/project" value="' + escapeHTML(saved.github_link || '') + '"><span class="field-hint">A project, repository or hosted file. 255 characters max.</span></div>' +
+              '<div class="field"><label for="submission-notes">Notes for the reviewer (optional)</label><textarea id="submission-notes" name="notes" maxlength="1000" rows="3" placeholder="Anything the reviewer should know.">' + escapeHTML(saved.notes || '') + '</textarea></div>' +
+            '</form>' +
+            '<div class="drawer-foot">' +
+              '<button class="btn" type="button" id="submission-drawer-cancel">Cancel</button>' +
+              '<button class="btn btn-primary" id="submit-work-btn" type="submit" form="submission-form">Submit work</button>' +
+            '</div>' +
+          '</aside>';
+    }
+
+    function openSubmissionDrawer(bounty) {
+        var drawer = $('#submission-drawer');
+        var back = $('#submission-drawer-backdrop');
+        if (!drawer || !back) return;
+        drawer.hidden = false;
+        back.hidden = false;
+        document.body.style.overflow = 'hidden';
+        setTimeout(function() {
+            var t = $('#submission-title');
+            if (t) t.focus();
+        }, 20);
+        // Persist typed content to sessionStorage as the user types, keyed per bounty.
+        var draftKey = 'bounty_submit_draft_' + bounty.id;
+        // Property handler, not addEventListener: reopening the drawer must not stack listeners.
+        var draftForm = $('#submission-form');
+        if (draftForm) draftForm.oninput = function() {
+            try {
+                sessionStorage.setItem(draftKey, JSON.stringify({
+                    title: ($('#submission-title') || {}).value || '',
+                    description: ($('#submission-description') || {}).value || '',
+                    github_link: ($('#submission-link') || {}).value || '',
+                    notes: ($('#submission-notes') || {}).value || '',
+                }));
+            } catch (e) { /* ignore */ }
+        };
+        on($('#submission-drawer-cancel'), 'click', closeSubmissionDrawer);
+        // Escape closes the drawer.
+        document.addEventListener('keydown', drawerEsc);
+    }
+
+    function closeSubmissionDrawer() {
+        var drawer = $('#submission-drawer');
+        var back = $('#submission-drawer-backdrop');
+        if (drawer) drawer.hidden = true;
+        if (back) back.hidden = true;
+        document.body.style.overflow = '';
+        document.removeEventListener('keydown', drawerEsc);
+    }
+
+    function drawerEsc(e) {
+        if (e.key === 'Escape') closeSubmissionDrawer();
     }
 
     function bountyDetailPage(id) {
         if (!protectedPage('bounties/' + id)) return;
-        app.innerHTML = '<section class="page"><div class="container"><a class="back-link" href="#/bounties">' + icon('arrowLeft', 16) + ' Back to bounties</a><div class="loading-line"><span class="spinner"></span> Loading bounty details…</div></div></section>';
+        app.innerHTML = '<section class="page"><div class="container"><nav class="breadcrumb"><a href="#/bounties">Marketplace</a><span class="breadcrumb-sep">/</span><span>Loading…</span></nav><div class="loading-line"><span class="spinner"></span> Loading bounty details…</div></div></section>';
 
         Promise.all([api('/api/bounties/' + encodeURIComponent(id)), loadCatalogue().catch(function() { return null; })])
             .then(function(parts) {
@@ -1078,26 +1333,68 @@
                 var business = getRole() === 'business';
                 var open = String(bounty.status || 'open').toLowerCase() === 'open';
 
+                var deadlineBit = bounty.deadline ? daysLeft(bounty.deadline) : 'No deadline';
                 app.innerHTML =
-                    '<section class="page"><div class="container"><a class="back-link" href="#/bounties">' + icon('arrowLeft', 16) + ' Back to bounties</a><div class="detail-layout"><article class="panel"><span class="category-label"><span class="category-icon">' + icon('sparkles', 16) + '</span>' + escapeHTML(categoryLabel(bounty.category)) + '</span><h1 class="detail-title">' + escapeHTML(bounty.title || 'Untitled bounty') + '</h1><div class="detail-meta"><span class="status-pill ' + statusClass(bounty.status || 'open') + '">' + escapeHTML(titleCase(bounty.status || 'open')) + '</span><span>' + icon('clock', 14) + ' ' + escapeHTML(dateText(bounty.deadline)) + '</span><span>' + icon('file', 14) + ' ' + escapeHTML(titleCase(bounty.submission_type || 'submission')) + ' submission</span></div>' +
-                    '<section class="detail-section"><h2>About this bounty</h2><div class="detail-description">' + escapeHTML(bounty.description || 'No description has been provided.') + '</div></section>' +
-                    (bounty.project_id ? '<section class="detail-section"><h2>Part of a project</h2><p><a class="inline-link" href="#/projects/' + encodeURIComponent(bounty.project_id) + '">View the project and its other tasks</a></p></section>' : '') +
-                    (bounty.blocked ? '<section class="detail-section"><div class="notice warning">' + icon('alert', 16) + ' This task waits for other tasks to be completed first: ' + escapeHTML((bounty.depends_on || []).filter(function(d) { return d.status !== 'completed'; }).map(function(d) { return d.title; }).join(', ')) + '</div></section>' : '') +
-                    (bounty.acceptance_criteria && bounty.acceptance_criteria.length ? '<section class="detail-section"><h2>Acceptance criteria</h2>' + criteriaListHTML(bounty.acceptance_criteria) + '<p class="small muted">These checks help the reviewer. A failed check does not reject work.</p></section>' : '') +
-                    checklistSectionHTML(bounty.completion_checklist) +
-                    executionDetailHTML(bounty) +
-                    participationHTML(bounty) +
-                    (bounty.requirements ? '<section class="detail-section"><h2>Requirements</h2><div class="detail-description">' + escapeHTML(Array.isArray(bounty.requirements) ? bounty.requirements.join('\n') : bounty.requirements) + '</div></section>' : '') +
-                    '<section class="detail-section"><h2>Before you submit</h2><p>Review the task description and requirements carefully. Only submit work you have permission to share. The business will review the submission according to the task details.</p></section>' +
-                    (!business && open && !bounty.blocked ? '<section class="detail-section" id="submit-section"><h2>Submit your work</h2><form id="submission-form" class="form"><div id="submission-error" class="form-error" hidden role="alert"></div><div class="field"><label for="submission-title">Submission title</label><input id="submission-title" name="title" required minlength="3" maxlength="200" placeholder="Briefly describe your submission"></div><div class="field"><label for="submission-description">How your work meets the requirements</label><textarea id="submission-description" name="description" required minlength="30" maxlength="2000" rows="5" placeholder="Explain what you built and how it meets each requirement"></textarea><span class="field-hint">30 characters at least, 2000 at most.</span></div><div class="field"><label for="submission-link">' + (bounty.submission_type === 'text' ? 'Link (optional)' : 'Link to your work') + '</label><input id="submission-link" name="github_link" type="url" maxlength="255" ' + (bounty.submission_type === 'text' ? '' : 'required') + ' placeholder="https://github.com/your-name/project"><span class="field-hint">A project, repository or hosted file. 255 characters at most.</span></div><div class="field"><label for="submission-notes">Notes for the reviewer (optional)</label><textarea id="submission-notes" name="notes" maxlength="1000" rows="3" placeholder="Anything the reviewer should know"></textarea></div><button class="btn btn-primary" id="submit-work-btn" type="submit">Submit work ' + icon('arrow', 16) + '</button></form></section>' : '') +
-                    '</article><aside class="panel detail-sidebar"><span class="reward-label">Bounty reward</span><div class="reward-big">' + escapeHTML(money(bounty.reward_amount, bounty.currency || 'NGN')) + '</div>' + fundingHTML(bounty) + '<dl class="definition-list"><div><dt>Category</dt><dd>' + escapeHTML(categoryLabel(bounty.category)) + '</dd></div><div><dt>Difficulty</dt><dd>' + escapeHTML(titleCase(bounty.difficulty || 'medium')) + '</dd></div><div><dt>Deadline</dt><dd>' + escapeHTML(dateText(bounty.deadline)) + '</dd></div><div><dt>Time remaining</dt><dd>' + escapeHTML(daysLeft(bounty.deadline)) + '</dd></div><div><dt>Status</dt><dd>' + escapeHTML(titleCase(bounty.status || 'open')) + '</dd></div><div><dt>Workers</dt><dd>' + escapeHTML(workerSlotsText(bounty)) + '</dd></div></dl>' +
-                    (business ?
-                        '<p class="small muted">You are signed in as a business. Use your dashboard to review your workspace.</p><a class="btn btn-block" href="#/dashboard">Open dashboard</a>' :
-                        open && !bounty.blocked ?
-                        '<a class="btn btn-primary btn-block" href="#submit-section">Submit to this bounty ' + icon('arrow', 16) + '</a>' :
-                        '<p class="small muted">This bounty is not currently accepting submissions.</p>') +
-                    '</aside></div></div></section>';
+                    '<section class="page"><div class="container">' +
+                      '<nav class="breadcrumb" aria-label="Breadcrumb">' +
+                        '<a href="#/bounties">Marketplace</a><span class="breadcrumb-sep">/</span>' +
+                        '<span>' + escapeHTML(categoryLabel(bounty.category)) + '</span><span class="breadcrumb-sep">/</span>' +
+                        '<span>' + escapeHTML((bounty.title || 'Bounty').slice(0, 60)) + '</span>' +
+                      '</nav>' +
+                      '<div class="detail-layout">' +
+                        '<article class="panel">' +
+                          '<div class="stack-md">' +
+                            '<div class="row-sm" style="flex-wrap:wrap">' +
+                              '<span class="badge badge-signal">' + escapeHTML(categoryLabel(bounty.category)) + '</span>' +
+                              '<span class="status-pill status-' + statusClass(bounty.status || 'open') + '">' + escapeHTML(titleCase(bounty.status || 'open')) + '</span>' +
+                              (bounty.difficulty ? '<span class="tag">' + escapeHTML(titleCase(bounty.difficulty)) + '</span>' : '') +
+                            '</div>' +
+                            '<h1 style="font-family:var(--font-display);font-size:var(--text-h1);font-weight:700;letter-spacing:-0.02em;margin:0">' + escapeHTML(bounty.title || 'Untitled bounty') + '</h1>' +
+                            '<p class="meta row-sm" style="gap:16px;flex-wrap:wrap;color:var(--text-tertiary)">' +
+                              '<span>' + icon('clock', 13) + ' ' + escapeHTML(deadlineBit) + '</span>' +
+                              '<span>' + icon('file', 13) + ' ' + escapeHTML(titleCase(bounty.submission_type || 'submission')) + ' submission</span>' +
+                              '<span>' + escapeHTML(workerSlotsText(bounty)) + '</span>' +
+                            '</p>' +
+                          '</div>' +
+                          '<section class="detail-section" style="margin-top:28px"><h2>About this bounty</h2><div class="detail-description" style="color:var(--text-primary);line-height:1.65;font-size:var(--text-body)">' + escapeHTML(bounty.description || 'No description has been provided.') + '</div></section>' +
+                          (bounty.project_id ? '<section class="detail-section"><h2>Part of a project</h2><p><a class="inline-link" href="#/projects/' + encodeURIComponent(bounty.project_id) + '">View the project and its other tasks</a></p></section>' : '') +
+                          (bounty.blocked ? '<section class="detail-section"><div class="notice warning">' + icon('alert', 16) + ' This task waits for other tasks to be completed first: ' + escapeHTML((bounty.depends_on || []).filter(function(d) { return d.status !== 'completed'; }).map(function(d) { return d.title; }).join(', ')) + '</div></section>' : '') +
+                          (bounty.acceptance_criteria && bounty.acceptance_criteria.length ? '<section class="detail-section"><h2>Acceptance criteria</h2>' + criteriaListHTML(bounty.acceptance_criteria) + '<p class="small muted">These checks guide the reviewer. A failed check does not auto-reject work.</p></section>' : '') +
+                          checklistSectionHTML(bounty.completion_checklist) +
+                          executionDetailHTML(bounty) +
+                          participationHTML(bounty) +
+                          (bounty.requirements ? '<section class="detail-section"><h2>Requirements</h2><div class="detail-description" style="line-height:1.65">' + escapeHTML(Array.isArray(bounty.requirements) ? bounty.requirements.join('\n') : bounty.requirements) + '</div></section>' : '') +
+                        '</article>' +
+                        '<aside class="panel detail-sidebar">' +
+                          '<div class="detail-sidebar-card">' +
+                            '<div class="reward-display">' +
+                              '<span class="reward-label">Bounty reward</span>' +
+                              '<span class="reward-amount">' + escapeHTML(formatNumber(bounty.reward_amount)) + '</span>' +
+                              '<span class="reward-currency">' + escapeHTML(bounty.currency || 'NGN') + '</span>' +
+                            '</div>' +
+                            fundingHTML(bounty) +
+                            '<dl class="detail-def">' +
+                              '<div class="detail-def-row"><dt>Deadline</dt><dd>' + escapeHTML(dateText(bounty.deadline)) + '</dd></div>' +
+                              '<div class="detail-def-row"><dt>Time left</dt><dd>' + escapeHTML(deadlineBit) + '</dd></div>' +
+                              '<div class="detail-def-row"><dt>Category</dt><dd>' + escapeHTML(categoryLabel(bounty.category)) + '</dd></div>' +
+                              '<div class="detail-def-row"><dt>Difficulty</dt><dd>' + escapeHTML(titleCase(bounty.difficulty || 'medium')) + '</dd></div>' +
+                              '<div class="detail-def-row"><dt>Workers</dt><dd>' + escapeHTML(workerSlotsText(bounty)) + '</dd></div>' +
+                            '</dl>' +
+                            (business ?
+                              '<a class="btn btn-block" href="#/dashboard">Open dashboard</a>' :
+                              open && !bounty.blocked ?
+                              '<button class="btn btn-primary btn-block" id="open-submit-drawer" type="button">Submit to this bounty</button>' +
+                              '<p class="small muted" style="text-align:center;margin:0">You can revise your submission after you send it.</p>' :
+                              '<p class="small muted">This bounty is not currently accepting submissions.</p>') +
+                          '</div>' +
+                        '</aside>' +
+                      '</div>' +
+                    '</div></section>' +
+                    (!business && open && !bounty.blocked ? submissionDrawerHTML(bounty) : '');
 
+                on($('#open-submit-drawer'), 'click', function() { openSubmissionDrawer(bounty); });
+                on($('#submission-drawer-close'), 'click', closeSubmissionDrawer);
+                on($('#submission-drawer-backdrop'), 'click', closeSubmissionDrawer);
                 on($('#submission-form'), 'submit', function(event) { submitWork(event, bounty); });
                 addCompanyLink(bounty);
                 addReviewAndReport(bounty);
@@ -1156,8 +1453,12 @@
 
         api('/api/submissions', { method: 'POST', body: payload })
             .then(function() {
+                // Work is saved on the server: drop the local draft and close the drawer,
+                // then re-open this bounty so the worker sees their real submission.
+                try { sessionStorage.removeItem('bounty_submit_draft_' + bounty.id); } catch (e) { /* ignore */ }
+                closeSubmissionDrawer();
                 toast('Your submission was sent.', 'success');
-                go('dashboard');
+                bountyDetailPage(bounty.id);
             })
             .catch(function(error) {
                 showFormError(errorBox, friendlyApiError(error, 'Could not submit your work.'));
@@ -1244,7 +1545,7 @@
             '<div class="review-body"><div class="review-head"><h3>' + escapeHTML(s.title || 'Untitled submission') + '</h3>' +
             '<span class="status-pill ' + statusClass(status) + '">' + escapeHTML(statusLabel(status)) + '</span></div>' +
             '<div class="review-compare">' + asked + submitted + '</div>' +
-            (pending ? '<div class="revise-box" data-revise-box hidden><label class="small" for="revise-' + id + '">What should change?</label><textarea id="revise-' + id + '" rows="3" maxlength="1000" placeholder="Explain what needs to change"></textarea><div class="field"><label class="small" for="revise-deadline-' + id + '">Proposed new deadline (optional)</label><input id="revise-deadline-' + id + '" data-revise-deadline type="datetime-local"><span class="field-hint">The task deadline changes only if the worker accepts.</span></div><div><button class="btn btn-sm btn-primary" type="button" data-revise-send="' + id + '">Send back for changes</button></div></div>' : '') +
+            (pending ? '<div class="revise-box" data-revise-box hidden><label class="small" for="revise-' + id + '">What should change?</label><textarea id="revise-' + id + '" rows="3" maxlength="1000" placeholder="Explain what needs to change"></textarea><div class="field"><label class="small" for="revise-deadline-' + id + '">Proposed new deadline (optional)</label><input id="revise-deadline-' + id + '" data-revise-deadline type="datetime-local"><span class="field-hint">The task deadline changes only if the worker accepts.</span></div><div><button class="btn btn-sm" type="button" data-revise-send="' + id + '">Send back for changes</button></div></div>' : '') +
             (open ? '<div class="reject-box" data-reject-box hidden><label class="small" for="reject-reason-' + id + '">Reason for rejection (the worker sees this)</label><textarea id="reject-reason-' + id + '" data-reject-reason rows="3" maxlength="500" placeholder="Say what was missing or wrong, so the worker knows what to change"></textarea><span class="field-hint">10–500 characters. A rejection needs a reason.</span><div><button class="btn btn-sm btn-primary" type="button" data-reject-send="' + id + '">Send rejection</button></div></div>' : '') +
             '</div><div class="dashboard-item-actions">' +
             '<button class="btn btn-sm" type="button" data-checks="' + id + '">Run checks</button>' +
@@ -1635,7 +1936,9 @@
                 wireSubmissionTools(list, bounty);
                 $$('[data-approve]', list).forEach(function(btn) {
                     btn.addEventListener('click', function() {
-                        approveSubmission(bounty, btn.getAttribute('data-approve'), btn);
+                        inlineConfirm(btn, 'Approve this submission? This marks the bounty as completed.', 'Approve', function() {
+                            approveSubmission(bounty, btn.getAttribute('data-approve'), btn);
+                        });
                     });
                 });
                 $$('[data-reject]', list).forEach(function(btn) {
@@ -1649,7 +1952,9 @@
                         var card = btn.closest('[data-submission]');
                         var reason = String(card.querySelector('[data-reject-reason]').value || '').trim();
                         if (reason.length < 10) return toast('Give the worker a reason (at least 10 characters).', 'error');
-                        rejectSubmission(bounty, btn.getAttribute('data-reject-send'), btn, reason);
+                        inlineConfirm(btn, 'Reject this submission? The worker will see your reason and will not be able to resubmit to this bounty.', 'Reject', function() {
+                            rejectSubmission(bounty, btn.getAttribute('data-reject-send'), btn, reason);
+                        });
                     });
                 });
             })
@@ -1659,8 +1964,23 @@
             });
     }
 
+    // Inline confirmation inside the submission card: the decision is explicit, and nothing blocks the page.
+    function inlineConfirm(button, message, label, onYes) {
+        var card = button.closest('[data-submission]') || button.parentNode;
+        var old = card.querySelector('[data-inline-confirm]');
+        if (old) old.parentNode.removeChild(old);
+        var box = document.createElement('div');
+        box.className = 'notice warning inline-confirm';
+        box.setAttribute('data-inline-confirm', '');
+        box.setAttribute('role', 'alert');
+        box.innerHTML = '<p style="margin:0 0 10px">' + escapeHTML(message) + '</p><div class="row-sm"><button class="btn btn-sm btn-primary" type="button" data-yes>' + escapeHTML(label) + '</button><button class="btn btn-sm" type="button" data-no>Cancel</button></div>';
+        card.appendChild(box);
+        box.querySelector('[data-no]').addEventListener('click', function() { box.parentNode.removeChild(box); button.focus(); });
+        box.querySelector('[data-yes]').addEventListener('click', function() { box.parentNode.removeChild(box); onYes(); });
+        box.querySelector('[data-yes]').focus();
+    }
+
     function approveSubmission(bounty, submissionId, button) {
-        if (!window.confirm('Approve this submission? This marks the bounty as completed.')) return;
         button.disabled = true;
         button.innerHTML = '<span class="spinner"></span> Approving…';
 
@@ -1677,7 +1997,6 @@
     }
 
     function rejectSubmission(bounty, submissionId, button, reason) {
-        if (!window.confirm('Reject this submission? The worker will see your reason and will not be able to resubmit to this bounty.')) return;
         button.disabled = true;
 
         api('/api/submissions/' + encodeURIComponent(submissionId) + '/reject', { method: 'POST', body: { reason: reason } })
@@ -1755,7 +2074,7 @@
             executionSectionHTML() +
             '<section class="task-step panel"><span class="task-step-no">03 / Reward and dates</span>' +
             '<div class="form-grid">' +
-            '<div class="field"><label for="bounty-reward">Fixed reward (NGN)</label><input id="bounty-reward" name="reward_amount" type="number" required min="0.01" max="1000000" step="0.01" placeholder="15000.00"><span class="field-hint">Up to two decimal places.</span></div>' +
+            '<div class="field"><label for="bounty-reward">Fixed reward</label><div class="row-sm" style="gap:8px"><input id="bounty-reward" name="reward_amount" type="number" required min="0.01" max="1000000" step="0.01" placeholder="15000.00" style="flex:1;min-width:0"><select id="bounty-currency" name="currency" aria-label="Reward currency" style="width:auto"><option value="NGN">NGN</option></select></div><span class="field-hint">Up to two decimal places. The currency is one your region supports.</span></div>' +
             '<div class="field"><label for="bounty-deadline">Deadline</label><input id="bounty-deadline" name="deadline" type="datetime-local" required><span class="field-hint">Choose a future date and time.</span></div>' +
             '</div></section>' +
             '<div data-budget-slot></div>' +
@@ -1776,12 +2095,27 @@
         on($('#create-bounty-form'), 'submit', submitBounty);
         on($('#create-bounty-form'), 'input', updateTaskPreview);
         wireAiDraft();
+        loadCurrencies();
         wireExecution();
         mountFeature('budgetGuidance', app.querySelector('[data-budget-slot]'));
         updateTaskPreview();
     }
 
     // AI Task Architect: fills the create form from a plain-language goal. Saves nothing itself.
+    // Reward currencies come from the server, so the list always matches what a bounty may use.
+    function loadCurrencies() {
+        var select = document.getElementById('bounty-currency');
+        if (!select) return;
+        api('/api/global/regions').then(function(res) {
+            var list = (res && res.currencies) || [];
+            if (!list.length) return;
+            var fallback = res.default_currency || 'NGN';
+            select.innerHTML = list.map(function(c) {
+                return '<option value="' + escapeHTML(c.code) + '"' + (c.code === fallback ? ' selected' : '') + '>' + escapeHTML(c.code) + '</option>';
+            }).join('');
+        }).catch(function() { /* keep the NGN default */ });
+    }
+
     function wireAiDraft() {
         var btn = $('#ai-draft-btn');
         var status = $('#ai-status');
@@ -1935,6 +2269,7 @@
             category: values.get('category'),
             difficulty: values.get('difficulty'),
             reward_amount: Number(reward).toFixed(2),
+            currency: String(values.get('currency') || 'NGN'),
             deadline: deadline.toISOString(),
             submission_type: values.get('submission_type'),
             requirements: requirements,
@@ -2143,7 +2478,7 @@
                 var deadlineValue = deadlineInput ? deadlineInput.value : '';
                 if (notes.length < 5) return toast('Explain what needs to change (at least 5 characters).', 'error');
                 if (deadlineValue && new Date(deadlineValue).getTime() <= Date.now()) return toast('The proposed deadline must be in the future.', 'error');
-                if (!window.confirm('Send this submission back to the worker for changes?')) return;
+                inlineConfirm(btn, 'Send this back to the worker for changes?', 'Send back', function() {
                 btn.disabled = true;
                 var body = { notes: notes };
                 if (deadlineValue) body.proposed_deadline = new Date(deadlineValue).toISOString();
@@ -2156,6 +2491,7 @@
                         toast(friendlyApiError(error, 'Could not send this back.'), 'error');
                         btn.disabled = false;
                     });
+                });
             });
         });
     }
@@ -2515,43 +2851,74 @@
         removeHomeThemePicker();
         header.hidden = false;
 
+        // Navigation lives in one sidebar, opened from the Menu button. Hospitality comes first,
+        // then the marketplace, then everything else grouped by purpose.
         var authed = isAuthenticated();
-        var links = authed ?
-            headerLink('bounties', 'Marketplace') + headerLink('dashboard', 'Dashboard') + headerLink('how-it-works', 'How it works') + headerLink('protection', 'Trust & safety') +
-            (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('invitations', 'Invitations') : '') +
-            (getRole() === 'business' ? headerLink('talent', 'Talent pool') : '') :
-            headerLink('bounties', 'Marketplace') + headerLink('how-it-works', 'How it works');
+        var role = authed ? getRole() : '';
+        var groups = [];
+        groups.push(['Services', [headerLink('services', 'Hospitality')]]);
+        groups.push(['Work', authed ?
+            [headerLink('bounties', 'Marketplace'), headerLink('dashboard', 'Dashboard')]
+                .concat(role === 'worker' ? [headerLink('recommended', 'For you'), headerLink('invitations', 'Invitations'), headerLink('work', 'My work')] : []) :
+            [headerLink('bounties', 'Marketplace')]]);
+        if (authed && role === 'business') {
+            groups.push(['People', [headerLink('talent', 'Talent pool')]]);
+        }
+        groups.push(['Help', [headerLink('how-it-works', 'How it works'), headerLink('protection', 'Trust & safety')]]);
+        var sideLinks = groups.map(function(g) {
+            return '<div class="side-group"><p class="side-label">' + g[0] + '</p>' + g[1].join('') + '</div>';
+        }).join('');
+        var accountLinks = authed ?
+            '<div class="side-group"><p class="side-label">Account</p><a href="#/profile">Profile</a><button type="button" id="mobile-logout">Log out</button></div>' :
+            '<div class="side-group"><p class="side-label">Account</p><a href="#/auth/login">Log in</a><a href="#/auth/signup">Create account</a></div>';
+
         var authActions = authed ?
             '<div class="header-user">' + bellHTML() +
             '<a class="user-name" href="#/profile">' + escapeHTML((state.user.name || 'Member').split(' ')[0]) + '</a>' +
             '<button class="btn btn-sm btn-quiet" id="logout-btn" type="button" title="Log out" aria-label="Log out">' + icon('logout', 16) + '</button></div>' :
             '<a class="btn btn-sm btn-quiet desktop-auth" href="#/auth/login">Log in</a><a class="btn btn-primary btn-sm desktop-auth" href="#/auth/signup">Get started</a>';
-        var mobileLinks = authed ?
-            links + '<a href="#/profile">Profile</a><button type="button" id="mobile-logout">Log out</button>' :
-            '<a href="#/auth/login">Log in</a><a href="#/auth/signup">Create account</a>';
 
         header.className = 'site-header';
         header.innerHTML =
             '<div class="header-inner">' +
+            '<button class="menu-button" id="menu-btn" type="button" aria-expanded="' + state.mobileMenu + '" aria-controls="side-menu">' +
+            icon(state.mobileMenu ? 'close' : 'menu', 18) + '<span>Menu</span></button>' +
             '<a class="brand" href="#/" aria-label="Bounty home"><span class="brand-mark">B</span><span class="brand-word">Bounty</span></a>' +
-            '<nav class="nav-links" aria-label="Main navigation">' + links + '</nav>' +
             '<span class="header-spacer"></span>' +
             '<div class="header-tail">' +
             themePickerHTML() +
             authActions +
-            '<button class="icon-button mobile-menu" id="mobile-menu-btn" type="button" aria-expanded="' + state.mobileMenu + '" aria-controls="mobile-nav" aria-label="Toggle navigation">' + icon(state.mobileMenu ? 'close' : 'menu', 20) + '</button>' +
             '</div>' +
-            '</div>' +
-            '<nav id="mobile-nav" class="mobile-nav ' + (state.mobileMenu ? 'open' : '') + '" aria-label="Mobile navigation">' + mobileLinks + '</nav>';
+            '</div>';
+
+        // The sidebar sits outside the header: the header's backdrop blur would otherwise
+        // trap a fixed element inside the bar.
+        var sideRoot = document.getElementById('side-root');
+        if (!sideRoot) {
+            sideRoot = document.createElement('div');
+            sideRoot.id = 'side-root';
+            document.body.appendChild(sideRoot);
+        }
+        sideRoot.innerHTML =
+            '<div class="side-scrim' + (state.mobileMenu ? ' open' : '') + '" id="side-scrim" aria-hidden="true"></div>' +
+            '<nav id="side-menu" class="side-menu' + (state.mobileMenu ? ' open' : '') + '" aria-label="Main navigation">' +
+            '<div class="side-head"><span class="brand-word">Menu</span>' +
+            '<button class="icon-button" id="side-close" type="button" aria-label="Close menu">' + icon('close', 18) + '</button></div>' +
+            sideLinks + accountLinks +
+            '</nav>';
 
         bindThemePicker(header);
         on($('#bell-btn', header), 'click', function() { go('notifications'); });
-        on($('#mobile-menu-btn', header), 'click', function() {
+        on($('#menu-btn', header), 'click', function() {
             state.mobileMenu = !state.mobileMenu;
+            state.themeMenu = false;
             renderHeader();
+            if (state.mobileMenu) { var first = $('#side-menu a', sideRoot); if (first) first.focus(); }
         });
+        on($('#side-close', sideRoot), 'click', function() { state.mobileMenu = false; renderHeader(); $('#menu-btn', header).focus(); });
+        on($('#side-scrim', sideRoot), 'click', function() { state.mobileMenu = false; renderHeader(); });
         on($('#logout-btn', header), 'click', logout);
-        on($('#mobile-logout', header), 'click', logout);
+        on($('#mobile-logout', sideRoot), 'click', logout);
     }
 
     function bindThemePicker(root) {
@@ -2596,11 +2963,11 @@
 
     function homePage() {
         app.innerHTML =
-            '<section class="hero"><div class="container hero-grid"><div class="hero-copy animate-in"><span class="eyebrow"><span class="eyebrow-dot"></span> A wider world of opportunity</span><h1>Your skills deserve a <span class="gradient-text">global stage.</span></h1><p>Bounty connects people with meaningful tasks and rewards. Find work you can prove, build your reputation, and open doors beyond your location.</p><div class="hero-actions"><a class="btn btn-primary" href="#/auth/signup">Get started for free ' + icon('arrow', 17) + '</a><a class="btn" href="#/how-it-works">See how it works</a></div><div class="hero-proof"><div class="proof-avatars" aria-hidden="true"><span class="proof-avatar">DEV</span><span class="proof-avatar">DES</span><span class="proof-avatar">WR</span></div><span>Built around skills, clear requirements, and real work.</span></div></div>' +
-            '<div class="hero-art animate-in delay-2" aria-label="Illustration of a sample bounty card"><div class="orb"></div><div class="preview-card"><div class="preview-top"><span class="preview-label">Opportunity spotlight</span><span class="live-pill">Demo preview</span></div><span class="category-label"><span class="category-icon">' + icon('code', 16) + '</span> Development</span><h3>Build a landing page</h3><p>Create a clean, responsive experience for a growing business.</p><div class="preview-reward"><div><small>Illustrative reward</small><strong>₦15,000</strong></div><span class="tag">Beginner friendly</span></div><div class="preview-tags"><span class="tag">HTML &amp; CSS</span><span class="tag">Responsive</span><span class="tag">Portfolio</span></div></div><div class="float-note one"><span class="float-icon">' + icon('globe', 18) + '</span><div><strong>Opportunities without borders</strong><small>Skills can travel</small></div></div><div class="float-note two"><span class="float-icon">' + icon('shield', 18) + '</span><div><strong>Clear expectations</strong><small>Know what success means</small></div></div></div></div></section>' +
+            '<section class="hero"><div class="container hero-grid"><div class="hero-copy animate-in"><span class="eyebrow"><span class="eyebrow-dot"></span> A wider world of opportunity</span><h1>Your skills deserve a global stage.</h1><p>Bounty connects people with meaningful tasks and rewards. Find work you can prove, build your reputation, and open doors beyond your location.</p><div class="hero-actions"><a class="btn btn-primary" href="#/auth/signup">Get started for free ' + icon('arrow', 17) + '</a><a class="btn" href="#/how-it-works">See how it works</a></div><div class="hero-proof"><span>Built around skills, clear requirements, and real work.</span></div></div>' +
+            '<div class="hero-art animate-in delay-2" aria-label="Illustration of a sample bounty card"><div class="orb"></div><div class="preview-card"><div class="preview-top"><span class="preview-label">Opportunity spotlight</span><span class="live-pill">Demo preview</span></div><span class="category-label"><span class="category-icon">' + icon('code', 16) + '</span> Development</span><h2>Build a landing page</h2><p>Create a clean, responsive experience for a growing business.</p><div class="preview-reward"><div><small>Illustrative reward</small><strong>₦15,000</strong></div><span class="tag">Beginner friendly</span></div><div class="preview-tags"><span class="tag">HTML &amp; CSS</span><span class="tag">Responsive</span><span class="tag">Portfolio</span></div></div><div class="float-note one"><span class="float-icon">' + icon('globe', 18) + '</span><div><strong>Opportunities without borders</strong><small>Skills can travel</small></div></div><div class="float-note two"><span class="float-icon">' + icon('shield', 18) + '</span><div><strong>Clear expectations</strong><small>Know what success means</small></div></div></div></div></section>' +
             '<div class="logo-strip"><div class="container logo-strip-inner"><p>Opportunities across skill sets</p><span class="category-word">Development</span><span class="category-word">Design</span><span class="category-word">Content</span><span class="category-word">Marketing</span><span class="category-word">And more</span></div></div>' +
             '<section class="section"><div class="container"><div class="section-heading center"><span class="eyebrow">Why Bounty</span><h2>Opportunity should be easier to reach.</h2><p>Good work can come from anywhere. Bounty is designed to make opportunities clearer, more accessible, and easier to act on.</p></div><div class="feature-grid"><article class="feature-card animate-in"><span class="feature-icon">' + icon('globe', 24) + '</span><h3>Wider access</h3><p>Discover task-based opportunities without relying only on personal connections or location.</p></article><article class="feature-card animate-in delay-1"><span class="feature-icon">' + icon('file', 24) + '</span><h3>Clear expectations</h3><p>Every bounty can define its scope, requirements, deadline, and reward before work begins.</p></article><article class="feature-card animate-in delay-2"><span class="feature-icon">' + icon('shield', 24) + '</span><h3>Visible progress</h3><p>Keep submissions and review status organized so workers and businesses can follow the process.</p></article></div></div></section>' +
-            '<section class="section-tight"><div class="container split-section"><div><span class="eyebrow">A straightforward process</span><div class="section-heading"><h2>From opportunity to completed work.</h2><p>Bounty is built around a simple workflow that helps both sides understand what happens next.</p></div><ul class="check-list"><li><span class="checkmark">✓</span><span>Businesses describe the task, reward, deadline, and requirements.</span></li><li><span class="checkmark">✓</span><span>Workers find relevant opportunities and submit work.</span></li><li><span class="checkmark">✓</span><span>Businesses review submissions and update the outcome.</span></li></ul><div class="hero-actions"><a class="btn btn-primary" href="#/how-it-works">Explore the process ' + icon('arrow', 16) + '</a></div></div><div class="split-visual"><h3>How a bounty moves forward</h3><div class="mini-step"><span class="step-number">01</span><div><strong>Publish the task</strong><p>Describe the outcome, requirements, and deadline.</p></div></div><div class="mini-step"><span class="step-number">02</span><div><strong>Submit the work</strong><p>Workers provide a link or submission that matches the task.</p></div></div><div class="mini-step"><span class="step-number">03</span><div><strong>Review the result</strong><p>The business checks the submission and records its decision.</p></div></div><p class="small">Payments in this prototype are simulated; no real funds move.</p></div></div></section>' +
+            '<section class="section-tight"><div class="container split-section"><div><span class="eyebrow">A straightforward process</span><div class="section-heading"><h2>From opportunity to completed work.</h2><p>Bounty is built around a simple workflow that helps both sides understand what happens next.</p></div><ul class="check-list"><li><span class="checkmark">✓</span><span>Businesses describe the task, reward, deadline, and requirements.</span></li><li><span class="checkmark">✓</span><span>Workers find relevant opportunities and submit work.</span></li><li><span class="checkmark">✓</span><span>Businesses review submissions and update the outcome.</span></li></ul><div class="hero-actions"><a class="btn" href="#/how-it-works">Explore the process ' + icon('arrow', 16) + '</a></div></div><div class="split-visual"><h3>How a bounty moves forward</h3><div class="mini-step"><span class="step-number">01</span><div><strong>Publish the task</strong><p>Describe the outcome, requirements, and deadline.</p></div></div><div class="mini-step"><span class="step-number">02</span><div><strong>Submit the work</strong><p>Workers provide a link or submission that matches the task.</p></div></div><div class="mini-step"><span class="step-number">03</span><div><strong>Review the result</strong><p>The business checks the submission and records its decision.</p></div></div><p class="small">Payments in this prototype are simulated; no real funds move.</p></div></div></section>' +
             '<section class="section"><div class="container"><div class="cta-panel"><h2>Your next opportunity could start with one task.</h2><p>Create an account to explore the marketplace, see full bounty details, and take your next step.</p><div class="hero-actions"><a class="btn btn-primary" href="#/auth/signup">Create your account ' + icon('arrow', 16) + '</a><a class="btn btn-outline-light" href="#/how-it-works">How it works</a></div></div></div></section>';
     }
 
@@ -2699,6 +3066,7 @@
         renderHeader();
         renderFooter();
         app.focus({ preventScroll: true });
+        if (window.BountyFeatures && window.BountyFeatures.afterRender) window.BountyFeatures.afterRender();
         if (isAuthenticated()) {
             loadNotifications();
             checkOnboarding();
@@ -3227,6 +3595,20 @@
             if (state.themeMenu && !(event.target.closest && event.target.closest('.theme-menu-wrap'))) {
                 state.themeMenu = false;
                 renderHeader();
+            }
+            // Choosing a page closes the sidebar, so the page is what the person sees next.
+            if (state.mobileMenu && event.target.closest && event.target.closest('#side-menu a')) {
+                state.mobileMenu = false;
+                renderHeader();
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && state.mobileMenu) {
+                state.mobileMenu = false;
+                renderHeader();
+                var btn = document.getElementById('menu-btn');
+                if (btn) btn.focus();
             }
         });
 

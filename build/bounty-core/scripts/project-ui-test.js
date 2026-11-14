@@ -107,6 +107,7 @@ const task = (title, extra) => Object.assign({ title, description: 'Work item: '
     await bizPage.click('[data-revise]');
     await bizPage.fill('[data-revise-box] textarea', 'Please explain the change in more detail.');
     await bizPage.click('[data-revise-send]');
+    await bizPage.click('[data-inline-confirm] [data-yes]');
     await sleep(1200);
     const afterRev = await api('GET', '/api/submissions/bounty/' + crit.body.id, null, biz.token);
     ok('request changes moves the submission to revision_requested', afterRev.body[0].status === 'revision_requested', afterRev.body);
