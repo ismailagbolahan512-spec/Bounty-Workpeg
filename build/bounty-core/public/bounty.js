@@ -2070,7 +2070,7 @@
             executionSectionHTML() +
             '<section class="task-step panel"><span class="task-step-no">03 / Reward and dates</span>' +
             '<div class="form-grid">' +
-            '<div class="field"><label for="bounty-reward">Fixed reward (NGN)</label><input id="bounty-reward" name="reward_amount" type="number" required min="0.01" max="1000000" step="0.01" placeholder="15000.00"><span class="field-hint">Up to two decimal places.</span></div>' +
+            '<div class="field"><label for="bounty-reward">Fixed reward</label><div class="row-sm" style="gap:8px"><input id="bounty-reward" name="reward_amount" type="number" required min="0.01" max="1000000" step="0.01" placeholder="15000.00" style="flex:1;min-width:0"><select id="bounty-currency" name="currency" aria-label="Reward currency" style="width:auto"><option value="NGN">NGN</option></select></div><span class="field-hint">Up to two decimal places. The currency is one your region supports.</span></div>' +
             '<div class="field"><label for="bounty-deadline">Deadline</label><input id="bounty-deadline" name="deadline" type="datetime-local" required><span class="field-hint">Choose a future date and time.</span></div>' +
             '</div></section>' +
             '<div data-budget-slot></div>' +
@@ -2091,12 +2091,27 @@
         on($('#create-bounty-form'), 'submit', submitBounty);
         on($('#create-bounty-form'), 'input', updateTaskPreview);
         wireAiDraft();
+        loadCurrencies();
         wireExecution();
         mountFeature('budgetGuidance', app.querySelector('[data-budget-slot]'));
         updateTaskPreview();
     }
 
     // AI Task Architect: fills the create form from a plain-language goal. Saves nothing itself.
+    // Reward currencies come from the server, so the list always matches what a bounty may use.
+    function loadCurrencies() {
+        var select = document.getElementById('bounty-currency');
+        if (!select) return;
+        api('/api/global/regions').then(function(res) {
+            var list = (res && res.currencies) || [];
+            if (!list.length) return;
+            var fallback = res.default_currency || 'NGN';
+            select.innerHTML = list.map(function(c) {
+                return '<option value="' + escapeHTML(c.code) + '"' + (c.code === fallback ? ' selected' : '') + '>' + escapeHTML(c.code) + '</option>';
+            }).join('');
+        }).catch(function() { /* keep the NGN default */ });
+    }
+
     function wireAiDraft() {
         var btn = $('#ai-draft-btn');
         var status = $('#ai-status');
@@ -2250,6 +2265,7 @@
             category: values.get('category'),
             difficulty: values.get('difficulty'),
             reward_amount: Number(reward).toFixed(2),
+            currency: String(values.get('currency') || 'NGN'),
             deadline: deadline.toISOString(),
             submission_type: values.get('submission_type'),
             requirements: requirements,
@@ -2835,7 +2851,7 @@
         var links = authed ?
             headerLink('bounties', 'Marketplace') + headerLink('dashboard', 'Dashboard') + headerLink('how-it-works', 'How it works') + headerLink('protection', 'Trust & safety') +
             (getRole() === 'worker' ? headerLink('recommended', 'For you') + headerLink('invitations', 'Invitations') + headerLink('work', 'My work') : '') +
-            (getRole() === 'business' ? headerLink('talent', 'Talent pool') : '') :
+            (getRole() === 'business' ? headerLink('talent', 'Talent pool') + headerLink('connections/workpeg', 'Workpeg') : '') :
             headerLink('bounties', 'Marketplace') + headerLink('how-it-works', 'How it works');
         var authActions = authed ?
             '<div class="header-user">' + bellHTML() +
