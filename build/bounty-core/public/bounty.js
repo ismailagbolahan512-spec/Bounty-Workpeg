@@ -1816,7 +1816,7 @@
         var html = '<section class="detail-section" id="participation-section"><h2>Take this task</h2>';
 
         if (me && me.status === 'active' && (!needsNda || me.roe_accepted)) {
-            return html + '<div class="notice">You are on this task. Use the workspace below to talk to the business.</div></section>';
+            return html + '<div class="notice">You are on this task. <strong>Next step:</strong> open the workspace below to talk to the business and follow the deliverables. Due ' + escapeHTML(dateText(bounty.deadline)) + '.</div></section>';
         }
         if (bounty.execution_mode === 'team' && !(me && me.status === 'assigned')) {
             return html + '<p class="small muted">Team work is assigned by the business. You cannot take it yourself.</p></section>';

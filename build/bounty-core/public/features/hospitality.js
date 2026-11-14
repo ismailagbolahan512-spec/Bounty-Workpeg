@@ -564,6 +564,12 @@
             ? '<p class="notice">Visit confirmed. Chat is open.</p>'
             : '<p class="small muted">Waiting for both sides to confirm. The provider confirmed: ' + (a.provider_confirmed ? 'yes' : 'not yet') +
               ' · The business confirmed: ' + (a.business_confirmed ? 'yes' : 'not yet') + '.</p>';
+        var next = '';
+        if (mine === 'provider' && a.status === 'confirmed') {
+            next = '<p class="notice"><strong>Next step:</strong> go to the address at the visit time. Message the business here if you need anything.</p>';
+        } else if (mine === 'provider' && a.status === 'proposed' && a.provider_confirmed) {
+            next = '<p class="notice"><strong>Next step:</strong> wait for the business to confirm the visit time. The address and chat open then.</p>';
+        }
         var confirmBtn = (a.status === 'proposed' && !myConfirmed)
             ? '<button class="btn btn-primary btn-sm" id="appt-confirm">Confirm this visit</button> ' : '';
         var changeBtn = a.status !== 'superseded' && a.status !== 'cancelled'
@@ -589,7 +595,7 @@
             ? '<p><strong>Address:</strong> ' + esc(q.address) + '</p>' : '';
 
         slot.innerHTML = '<div class="detail-section"><h2>The visit</h2>' +
-            '<p><strong>' + esc(a.local_starts) + '</strong> to ' + esc(a.local_ends) + '</p>' + status + address +
+            '<p><strong>' + esc(a.local_starts) + '</strong> to ' + esc(a.local_ends) + '</p>' + next + status + address +
             '<div class="form-actions">' + confirmBtn + changeBtn + removeBtn + '</div>' + changeForm + '</div>' + chat;
 
         var c = document.getElementById('appt-confirm');
