@@ -20,7 +20,8 @@
     var SCOPES = [
         { key: 'services:read', label: 'Read your hospitality requests, quotes and visits' },
         { key: 'bounties:read', label: 'Read open bounties' },
-        { key: 'workspace:read', label: 'Read your assignments' }
+        { key: 'workspace:read', label: 'Read your assignments' },
+        { key: 'bounties:publish', label: 'Post bounties for this business from Workpeg (within the daily limit and reward cap)' }
     ];
 
     // Sensitive actions the peg can ask to perform. Shown in plain words for the approval list.
