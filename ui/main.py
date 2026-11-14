@@ -14,6 +14,7 @@ from app_shell import AppShell
 from components import EmptyState, ErrorState, LoadingState
 from pages.home import HomePage
 from pages.services import ServicesPage
+from pages.post_bounty import PostBountyPage
 from pages.not_found import NotFoundPage
 
 
@@ -71,6 +72,7 @@ class Main(Router):
         Shell(AppShell, "/b/[business_id]", [
             Route("/", HomePage),
             Route("/services", ServicesPage),
+            Route("/post-bounty", PostBountyPage),
         ]),
     ]
     not_found = NotFoundPage
