@@ -4,6 +4,11 @@ A Workpeg peg for hospitality teams: managers post small jobs (housekeeping,
 kitchen, events, maintenance, front desk), staff submit finished work, and
 managers approve or reject it. Built from the Workpeg project scaffold.
 
+## Status
+
+This is a prototype still in development. It has not yet been made public to a
+wide audience.
+
 Data lives in Workpeg tables (`bounties` and `submissions`). The `function/`
 folder is scaffolded but not yet used.
 
