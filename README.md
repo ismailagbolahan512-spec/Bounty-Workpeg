@@ -1,13 +1,31 @@
-# Bounty (Workpeg hospitality hackathon)
+# Bounty
 
-A Workpeg peg for hospitality teams: managers post small jobs (housekeeping,
-kitchen, events, maintenance, front desk), staff submit finished work, and
-managers approve or reject it. Built from the Workpeg project scaffold.
+Bounty is a task-based marketplace that connects businesses with workers.
+Businesses create tasks, and workers are matched based on demonstrated ability
+and completed work, with submissions reviewed before they are approved or
+revised.
+
+This repository is the Workpeg version, built for the Workpeg hospitality
+hackathon. Here a Workpeg peg lets hospitality teams post small jobs
+(housekeeping, kitchen, events, maintenance, front desk), staff submit finished
+work, and managers approve or reject it. Built from the Workpeg project
+scaffold.
+
+Live demo: https://bounty-xyty.onrender.com/#/bounties
 
 ## Status
 
-This is a prototype still in development. It has not yet been made public to a
-wide audience.
+This is a prototype still in development. It works end to end, but it is
+unfinished and has not yet been made public to a wide audience. Payment
+integration and the AI-powered features are still in progress.
+
+## What is built
+
+- Backend with Node.js and Express.js, with REST APIs for authentication,
+  tasks, submissions and dashboards.
+- PostgreSQL database structures.
+- Email verification and password reset.
+- Task management, submission review and revision workflows.
 
 Data lives in Workpeg tables (`bounties` and `submissions`). The `function/`
 folder is scaffolded but not yet used.
@@ -35,3 +53,7 @@ bounty list with its detail page. Keep the shape, replace the example.
 `workpeg project submit` will eventually review and release both halves
 together to `<namespace>.workpeg.com`. It does not exist yet; until it does,
 each half ships through its own command.
+
+## Author
+
+Ismaila Gbolahan Jabar, founder and software developer.
